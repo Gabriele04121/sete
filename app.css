@@ -1,0 +1,696 @@
+/* Sete. Ghisa, ottone e acqua: i tre materiali di un nasone. */
+
+@font-face {
+  font-family: "Big Shoulders";
+  src: url("fonts/big-shoulders.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Hanken Grotesk";
+  src: url("fonts/hanken-grotesk.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  --ghisa: #1f2927;
+  --ghisa-su: #2a3634;
+  --ghisa-filo: #3b4946;
+  --marmo: #f1f3f0;
+  --tenue: #a9b6b2;
+  --ottone: #d9a93f;
+  --ottone-giu: #c2932d;
+  --acqua: #35b3e6;
+  --acqua-mappa: #0b84b5;
+
+  --cifre: "Big Shoulders", "Arial Narrow", Impact, sans-serif;
+  --testo: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --molla: cubic-bezier(0.22, 1, 0.3, 1);
+  --rimbalzo: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ombra: 0 1px 2px rgb(20 28 26 / 0.18), 0 8px 22px rgb(20 28 26 / 0.16);
+
+  --peek: 0px;
+  --alto: 120px;
+  --sx: 0px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #e8ebe6;
+  color: var(--marmo);
+  font-family: var(--testo);
+  font-size: 16px;
+  line-height: 1.4;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+button { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 3px solid var(--acqua); outline-offset: 2px; }
+
+/* ---------- Mappa ---------- */
+
+#map {
+  position: fixed;
+  inset: 0;
+  background: #e8ebe6;
+  font-family: var(--testo);
+}
+.maplibregl-ctrl-bottom-left {
+  bottom: calc(var(--peek) + 2px);
+  left: var(--sx);
+  transition: bottom 0.45s var(--molla);
+}
+.maplibregl-ctrl-attrib { font-size: 10.5px; }
+
+.mirino {
+  position: fixed;
+  z-index: 3;
+  left: calc(var(--sx) + (100% - var(--sx)) / 2);
+  top: calc(var(--alto) + (100% - var(--alto) - var(--peek)) / 2);
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--ghisa), var(--ghisa)) center / 2.5px 100% no-repeat,
+    linear-gradient(var(--ghisa), var(--ghisa)) center / 100% 2.5px no-repeat;
+  border-radius: 2px;
+  opacity: 0.8;
+}
+
+/* ---------- In alto: marchio e filtri ---------- */
+
+.alto {
+  position: fixed;
+  z-index: 5;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 0 0;
+  pointer-events: none;
+}
+.alto-riga {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 calc(env(safe-area-inset-right, 0px) + 12px) 0 calc(env(safe-area-inset-left, 0px) + 12px);
+}
+.alto-riga > *, .filtri > * { pointer-events: auto; }
+
+.marchio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 16px 0 9px;
+  border-radius: 12px;
+  background: var(--ghisa);
+  box-shadow: var(--ombra);
+  font-family: var(--cifre);
+  font-size: 27px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+.marchio-segno { display: block; width: 26px; height: 32px; }
+.marchio-segno svg { display: block; width: 100%; height: 100%; }
+
+.tasto {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: #fff;
+  color: var(--ghisa);
+  box-shadow: var(--ombra);
+  cursor: pointer;
+  transition: transform 0.18s var(--rimbalzo), background 0.2s;
+}
+.tasto svg { width: 22px; height: 22px; }
+.tasto:active { transform: scale(0.9); }
+
+.filtri {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 4px calc(env(safe-area-inset-right, 0px) + 12px) 12px calc(env(safe-area-inset-left, 0px) + 12px);
+  overflow-x: auto;
+  scrollbar-width: none;
+  pointer-events: none;
+}
+.filtri::-webkit-scrollbar { display: none; }
+
+.filtro {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 15px;
+  border: 0;
+  border-radius: 19px;
+  background: #fff;
+  color: var(--ghisa);
+  box-shadow: 0 1px 2px rgb(20 28 26 / 0.16), 0 3px 10px rgb(20 28 26 / 0.12);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.25s, color 0.25s, transform 0.18s var(--rimbalzo);
+}
+.filtro:active { transform: scale(0.95); }
+.filtro.attivo { background: var(--ghisa); color: var(--marmo); }
+
+.pallino {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px #fff;
+}
+.pallino.t-n { background: var(--ghisa); }
+.pallino.t-f { background: var(--acqua-mappa); }
+.pallino.t-m { background: var(--ottone); }
+.filtro.attivo .pallino { box-shadow: 0 0 0 2px var(--marmo); }
+
+/* ---------- Comandi mappa ---------- */
+
+.comandi {
+  position: fixed;
+  z-index: 5;
+  right: calc(env(safe-area-inset-right, 0px) + 12px);
+  bottom: calc(var(--peek) + 16px);
+  display: grid;
+  gap: 8px;
+  transition: bottom 0.45s var(--molla);
+}
+.comandi #btn-piu { border-radius: 14px 14px 4px 4px; }
+.comandi #btn-meno { margin-top: -6px; border-radius: 4px 4px 14px 14px; }
+.posizione { margin-top: 4px; }
+.posizione.attivo { background: var(--ghisa); color: var(--ottone); }
+
+/* ---------- Segni sulla mappa ---------- */
+
+.segno { width: 0; height: 0; cursor: pointer; }
+.bolla {
+  position: absolute;
+  left: -18px;
+  top: -18px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2.5px solid #fff;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 2px 6px rgb(20 28 26 / 0.35);
+  animation: spunta 0.5s var(--rimbalzo) both;
+  animation-delay: var(--ritardo, 0s);
+  transition: transform 0.2s var(--rimbalzo);
+}
+.bolla svg { width: 22px; height: 22px; overflow: visible; }
+.segno:active .bolla { transform: scale(0.9); }
+@keyframes spunta {
+  from { transform: scale(0); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.t-n .bolla { background: var(--ghisa); }
+.t-f .bolla { background: var(--acqua-mappa); }
+.t-m .bolla { background: var(--ottone); }
+
+/* Nasone: la goccia che cade dalla cannella */
+.goccia { animation: cade 2.2s ease-in infinite; animation-delay: var(--sfasa, 0s); }
+@keyframes cade {
+  0% { transform: translateY(-3px); opacity: 0; }
+  18% { opacity: 1; }
+  70%, 100% { transform: translateY(9px); opacity: 0; }
+}
+/* Fontanella: un cerchio d'acqua che si allarga */
+.t-f .bolla::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid var(--acqua-mappa);
+  animation: onda 3s ease-out infinite;
+  animation-delay: var(--sfasa, 0s);
+}
+@keyframes onda {
+  0% { transform: scale(1); opacity: 0.7; }
+  70%, 100% { transform: scale(1.75); opacity: 0; }
+}
+/* Fontana: gli zampilli che scorrono */
+.zampillo { stroke-dasharray: 3 3; animation: scorre 0.9s linear infinite; }
+@keyframes scorre { to { stroke-dashoffset: -12; } }
+
+/* Fontanella selezionata */
+.segno.scelto { z-index: 5; }
+.scelto .bolla {
+  left: -25px;
+  top: -25px;
+  width: 50px;
+  height: 50px;
+  border-width: 3px;
+  animation: spunta 0.45s var(--rimbalzo) both;
+}
+.scelto .bolla svg { width: 30px; height: 30px; }
+.cerchio {
+  position: absolute;
+  left: -25px;
+  top: -25px;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 2.5px solid var(--acqua-mappa);
+  animation: cerchio 2.4s ease-out infinite;
+  pointer-events: none;
+}
+.cerchio.due { animation-delay: 1.2s; }
+@keyframes cerchio {
+  0% { transform: scale(1); opacity: 0.75; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+.etichetta {
+  position: absolute;
+  left: 0;
+  top: -64px;
+  height: 30px;
+  translate: -50% 0;
+  padding: 0 12px;
+  border-radius: 15px;
+  background: var(--ghisa);
+  color: var(--marmo);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 30px;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgb(20 28 26 / 0.3);
+  animation: etichetta 0.4s var(--molla) 0.12s both;
+  pointer-events: none;
+}
+@keyframes etichetta {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+/* Io */
+.io { width: 0; height: 0; pointer-events: none; }
+.io::before {
+  content: "";
+  position: absolute;
+  left: -24px;
+  top: -24px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--ottone);
+  animation: respiro 2.6s ease-in-out infinite;
+}
+.io::after {
+  content: "";
+  position: absolute;
+  left: -11px;
+  top: -11px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--ottone);
+  border: 3.5px solid #fff;
+  box-shadow: 0 1px 6px rgb(0 0 0 / 0.45);
+}
+@keyframes respiro {
+  0%, 100% { transform: scale(0.55); opacity: 0.4; }
+  50% { transform: scale(1); opacity: 0.14; }
+}
+
+/* ---------- Scheda ---------- */
+
+.scheda {
+  position: fixed;
+  z-index: 10;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: min(84dvh, 740px);
+  border-radius: 26px 26px 0 0;
+  background: var(--ghisa);
+  box-shadow: 0 -6px 30px rgb(20 28 26 / 0.3);
+  transform: translateY(var(--giu, 0px));
+  transition: transform 0.5s var(--molla);
+  will-change: transform;
+}
+.scheda.trascina { transition: none; }
+.scheda.nascosta { transform: translateY(105%); }
+
+.maniglia {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: grab;
+  touch-action: none;
+}
+.maniglia span {
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--ghisa-filo);
+  transition: background 0.2s, width 0.3s var(--molla);
+}
+.scheda.aperta .maniglia span { width: 30px; background: var(--ottone); }
+
+.cima {
+  flex: 0 0 auto;
+  padding: 0 20px calc(env(safe-area-inset-bottom, 0px) + 18px);
+  touch-action: none;
+}
+.cima-riga {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cima-testo { min-width: 0; flex: 1 1 auto; }
+
+.contesto-riga {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  min-height: 22px;
+}
+.contesto {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--tenue);
+}
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--ottone);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.distanza {
+  margin: 0 0 2px;
+  font-family: var(--cifre);
+  font-size: 84px;
+  font-weight: 800;
+  line-height: 0.92;
+  letter-spacing: 0.005em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.distanza .unita {
+  margin-left: 6px;
+  font-size: 34px;
+  font-weight: 600;
+  color: var(--ottone);
+}
+
+.cima h1 {
+  margin: 6px 0 0;
+  font-size: 19px;
+  font-weight: 650;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.dettaglio {
+  margin: 2px 0 0;
+  font-size: 15px;
+  color: var(--tenue);
+}
+
+.figura {
+  flex: 0 0 auto;
+  width: 118px;
+  height: 118px;
+  margin: 0 -6px -2px 0;
+}
+.figura svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: figura 0.5s var(--molla) both;
+}
+@keyframes figura {
+  from { transform: translateY(10px) scale(0.92); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.getto { stroke-dasharray: 9 7; animation: getto 0.7s linear infinite; }
+@keyframes getto { to { stroke-dashoffset: -16; } }
+.pozza { transform-box: fill-box; transform-origin: center; animation: pozza 2s ease-out infinite; }
+.pozza.due { animation-delay: 1s; }
+@keyframes pozza {
+  0% { transform: scale(0.3); opacity: 0.9; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
+
+.nota {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--ghisa-su);
+  font-size: 14px;
+  color: var(--tenue);
+}
+
+.vai {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 56px;
+  margin-top: 16px;
+  border-radius: 16px;
+  background: var(--ottone);
+  color: #1a2220;
+  font-size: 17px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform 0.18s var(--rimbalzo), background 0.2s;
+}
+.vai svg { width: 24px; height: 24px; }
+.vai:active { transform: scale(0.97); background: var(--ottone-giu); }
+
+.resto {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 20px calc(env(safe-area-inset-bottom, 0px) + 22px);
+  border-top: 1px solid var(--ghisa-filo);
+}
+.spiega {
+  margin: 16px 0 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--marmo);
+}
+.resto h2 {
+  margin: 22px 0 4px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--tenue);
+}
+
+.elenco { list-style: none; margin: 0; padding: 0; }
+.elenco li + li { border-top: 1px solid var(--ghisa-filo); }
+.voce {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 62px;
+  padding: 10px 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.voce .mini {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 2px solid var(--marmo);
+}
+.voce .mini svg { width: 22px; height: 22px; }
+.voce .mini.t-n { background: var(--ghisa-su); }
+.voce .mini.t-f { background: var(--acqua-mappa); }
+.voce .mini.t-m { background: var(--ottone); }
+.voce .cosa { flex: 1 1 auto; min-width: 0; font-size: 16px; font-weight: 600; }
+.voce .cosa small { display: block; font-size: 14px; font-weight: 400; color: var(--tenue); }
+.voce .quanto {
+  flex: 0 0 auto;
+  font-family: var(--cifre);
+  font-size: 26px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.voce .quanto span { margin-left: 3px; font-size: 16px; font-weight: 600; color: var(--ottone); }
+
+/* ---------- Avvio ---------- */
+
+.sipario {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--ghisa);
+  transition: opacity 0.6s ease, visibility 0s 0.6s;
+}
+.sipario.via { opacity: 0; visibility: hidden; pointer-events: none; }
+.sipario.via .sipario-centro { transform: scale(1.08); }
+.sipario-centro {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 0 32px;
+  text-align: center;
+  transition: transform 0.6s var(--molla);
+}
+.sipario-logo { width: 132px; height: 132px; }
+.sipario-nome {
+  margin: 4px 0 0;
+  font-family: var(--cifre);
+  font-size: 64px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+.sipario-testo {
+  margin: 0 0 14px;
+  max-width: 30ch;
+  font-size: 16px;
+  color: var(--tenue);
+}
+
+.bottone {
+  display: inline-grid;
+  place-items: center;
+  min-height: 52px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--ottone);
+  color: #1a2220;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.18s var(--rimbalzo);
+}
+.bottone:active { transform: scale(0.97); }
+.bottone.chiaro { background: var(--ghisa-su); color: var(--marmo); box-shadow: inset 0 0 0 1.5px var(--ghisa-filo); }
+.bottone:disabled { opacity: 0.6; }
+
+/* ---------- Legenda ---------- */
+
+dialog {
+  width: min(92vw, 430px);
+  max-height: 88dvh;
+  padding: 0;
+  border: 0;
+  border-radius: 24px;
+  background: var(--ghisa);
+  color: var(--marmo);
+  box-shadow: 0 24px 70px rgb(0 0 0 / 0.45);
+}
+dialog[open] { animation: finestra 0.4s var(--molla); }
+dialog::backdrop { background: rgb(15 21 20 / 0.55); animation: velo 0.3s ease; }
+@keyframes finestra { from { transform: translateY(24px) scale(0.96); opacity: 0; } }
+@keyframes velo { from { opacity: 0; } }
+
+.info-corpo { display: grid; gap: 16px; padding: 26px 22px 22px; }
+.info-corpo h2 {
+  margin: 0;
+  font-family: var(--cifre);
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+.info-corpo p { margin: 0; }
+.info-corpo form { display: grid; }
+.piccolo { font-size: 13.5px; line-height: 1.5; color: var(--tenue); }
+.info-dati { font-size: 15px; }
+
+.legenda { list-style: none; display: grid; gap: 16px; margin: 0; padding: 0; }
+.legenda li { display: flex; gap: 14px; align-items: flex-start; }
+.legenda .mini {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 2.5px solid #fff;
+}
+.legenda .mini svg { width: 24px; height: 24px; overflow: visible; }
+.legenda .mini.t-n { background: var(--ghisa-su); }
+.legenda .mini.t-f { background: var(--acqua-mappa); }
+.legenda .mini.t-m { background: var(--ottone); }
+.legenda strong { display: block; font-size: 16px; }
+.legenda span { font-size: 14.5px; line-height: 1.45; color: var(--tenue); }
+
+/* ---------- Schermi larghi ---------- */
+
+@media (min-width: 900px) {
+  :root { --sx: 420px; }
+  .scheda {
+    left: 20px;
+    right: auto;
+    bottom: 20px;
+    width: 380px;
+    max-height: calc(100dvh - 160px);
+    border-radius: 26px;
+    transform: none;
+  }
+  .scheda.nascosta { transform: translateY(120%); }
+  .maniglia { visibility: hidden; height: 20px; }
+  .cima { padding-bottom: 20px; touch-action: auto; }
+  .alto { right: auto; width: 420px; }
+  .alto-riga { padding-left: 20px; }
+  .filtri { padding-left: 20px; flex-wrap: wrap; }
+  .comandi { bottom: 24px; right: 20px; }
+  .maplibregl-ctrl-bottom-left { bottom: 0; }
+  #btn-info { position: fixed; top: 12px; right: 20px; }
+}
+
+@media (max-width: 350px) {
+  .distanza { font-size: 68px; }
+  .figura { width: 92px; height: 92px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01s !important; animation-iteration-count: 1 !important; transition-duration: 0.01s !important; }
+}

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Sete, le fontanelle di Roma</title>
+<meta name="description" content="Trova il nasone più vicino a te.">
+<meta name="theme-color" content="#1f2927">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sete">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preload" href="fonts/big-shoulders.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/hanken-grotesk.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<div id="map" aria-label="Mappa delle fontanelle di Roma"></div>
+<div class="mirino" id="mirino" hidden aria-hidden="true"></div>
+
+<header class="alto">
+  <div class="alto-riga">
+    <div class="marchio"><span class="marchio-segno" id="marchio-segno"></span><span>Sete</span></div>
+    <button class="tasto" id="btn-info" type="button" aria-label="Legenda e dati">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="1.6" fill="currentColor"/><path d="M12 11v7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <nav class="filtri" id="filtri" aria-label="Tipo di fontanella">
+    <button type="button" class="filtro" data-t="n" aria-pressed="false"><i class="pallino t-n"></i>Nasoni</button>
+    <button type="button" class="filtro" data-t="f" aria-pressed="false"><i class="pallino t-f"></i>Fontanelle</button>
+    <button type="button" class="filtro" data-t="m" aria-pressed="false"><i class="pallino t-m"></i>Fontane</button>
+  </nav>
+</header>
+
+<div class="comandi">
+  <button class="tasto" id="btn-piu" type="button" aria-label="Ingrandisci la mappa">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+  </button>
+  <button class="tasto" id="btn-meno" type="button" aria-label="Rimpicciolisci la mappa">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+  </button>
+  <button class="tasto posizione" id="btn-centra" type="button" aria-label="Torna alla mia posizione">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 3.5 3.8 10.4c-.6.3-.5 1.1.1 1.3l6.3 2.1 2.1 6.3c.2.6 1 .7 1.3.1L20.5 3.5Z" fill="currentColor"/></svg>
+  </button>
+</div>
+
+<section class="scheda nascosta" id="scheda" aria-live="polite">
+  <button class="maniglia" id="maniglia" type="button" aria-label="Apri o chiudi i dettagli" aria-expanded="false"><span></span></button>
+
+  <div class="cima" id="cima">
+    <div class="cima-riga">
+      <div class="cima-testo">
+        <div class="contesto-riga">
+          <p class="contesto" id="contesto">La più vicina a te</p>
+          <button class="link" id="btn-sblocca" type="button" hidden>Torna alla più vicina</button>
+        </div>
+        <p class="distanza"><span id="dist-num">0</span><span class="unita" id="dist-unita">m</span></p>
+        <h1 id="titolo">Nasone</h1>
+        <p class="dettaglio" id="dettaglio"></p>
+      </div>
+      <div class="figura" id="figura" aria-hidden="true"></div>
+    </div>
+    <p class="nota" id="nota" hidden></p>
+    <a class="vai" id="btn-vai" href="#" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="13" cy="4.2" r="2.2" fill="currentColor"/><path d="M13.5 8.5 10 10.2l-1.2 4M13.5 8.5l1.2 4.3 3 1.7M13.5 8.5l-1.3 6-3.2 5.5M12.2 14.5l3 2.5.8 4" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Indicazioni a piedi</span>
+    </a>
+  </div>
+
+  <div class="resto" id="resto">
+    <p class="spiega" id="spiega"></p>
+    <h2>Altre vicine</h2>
+    <ol class="elenco" id="elenco"></ol>
+  </div>
+</section>
+
+<div class="sipario" id="sipario">
+  <div class="sipario-centro">
+    <div class="sipario-logo" id="sipario-logo"></div>
+    <p class="sipario-nome">Sete</p>
+    <p class="sipario-testo" id="sipario-testo">Le fontanelle di Roma</p>
+    <button class="bottone" id="btn-riprova" type="button" hidden>Riprova</button>
+  </div>
+</div>
+
+<dialog id="info" aria-labelledby="info-titolo">
+  <div class="info-corpo">
+    <h2 id="info-titolo">Cosa c'è sulla mappa</h2>
+    <ul class="legenda" id="legenda"></ul>
+    <p class="info-dati" id="info-dati">Nessun dato scaricato.</p>
+    <button class="bottone chiaro" id="btn-aggiorna" type="button">Aggiorna le fontanelle</button>
+    <p class="piccolo">Le posizioni arrivano da OpenStreetMap e sono curate da volontari: una fontanella può essere chiusa, spostata o mancare. Molti nasoni sono segnati come semplici fontanelle.</p>
+    <p class="piccolo">Dati e mappa © collaboratori di OpenStreetMap. Mappa servita da OpenFreeMap. Indirizzi da Nominatim.</p>
+    <form method="dialog"><button class="bottone" type="submit">Chiudi</button></form>
+  </div>
+</dialog>
+
+<script src="vendor/maplibre/maplibre-gl.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
