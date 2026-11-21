@@ -21,6 +21,10 @@
   const CHIAVE = 'sete.fontanelle.v2';
   const CHIAVE_FILTRO = 'sete.filtro';
   const GPS_INCERTO = 80;        // metri: oltre, avvisa che la posizione è approssimativa
+  const SOGLIA_ARRIVO = 15;      // metri: sotto, sei arrivato
+  const ZOOM_CAMMINO = 17.5;     // zoom della mappa mentre cammini con "Vai"
+  const MARGINE_AVANTI = 90;     // pixel di margine in alto per vedere la strada davanti a te
+  const RAGGIO_LINK = 30;        // metri: tolleranza per ritrovare una fontanella da un link condiviso
 
   const $ = (id) => document.getElementById(id);
   const largo = window.matchMedia('(min-width: 900px)');
@@ -112,6 +116,12 @@
   let ioLontano = false;
   let gpsNegato = false;
   let fissata = null;        // fontanella scelta a mano
+  let navigando = false;     // modalità "Vai": la destinazione resta fissa
+  let meta = null;           // fontanella di destinazione durante la navigazione
+  let seguendo = false;      // la mappa segue l'utente
+  let arrivoFatto = false;
+  let attesaArrivo = null;
+  let bloccoSchermo = null;  // Screen Wake Lock
   let vicine = [];           // [{i, d}] ordinate per distanza
   let ultimaMostrata = null;
   let primaVista = true;
@@ -178,6 +188,7 @@
     } catch (e) { return null; }
   }
   function usaPacchetto(j) {
+    if (navigando) finisciNavigazione();   // gli indici delle fontanelle cambiano
     punti = j.punti;
     quando = j.quando;
     try { localStorage.setItem(CHIAVE, JSON.stringify({ quando, punti })); } catch (e) { /* memoria piena */ }
@@ -215,6 +226,7 @@
           nuovi.push([+lat.toFixed(5), +lon.toFixed(5), tipo, t.name || '']);
         }
         if (nuovi.length < 50) throw new Error('risposta troppo corta');
+        if (navigando) finisciNavigazione();
         punti = nuovi;
         quando = Date.now();
         try { localStorage.setItem(CHIAVE, JSON.stringify({ quando, punti })); } catch (e) { /* memoria piena */ }
@@ -275,8 +287,9 @@
 
   function margini() {
     const alto = $('filtri').getBoundingClientRect().bottom;
-    if (largo.matches) return { top: 20, bottom: 20, left: 420, right: 20 };
-    return { top: Math.round(alto), bottom: Math.round(visibile()), left: 0, right: 0 };
+    if (largo.matches) return { top: 20 + (navigando && seguendo ? MARGINE_AVANTI : 0), bottom: 20, left: 420, right: 20 };
+    // mentre ti segue, la mappa ti tiene un po' più in basso per mostrarti la strada davanti
+    return { top: Math.round(alto) + (navigando && seguendo ? MARGINE_AVANTI : 0), bottom: Math.round(visibile()), left: 0, right: 0 };
   }
   let marginiInSospeso = false;
   let inquadrata = false;    // vero finché l'utente non sposta la mappa dopo un'inquadratura
@@ -338,7 +351,11 @@
 
     map.on('rotate', disegnaCono);
     // un gesto dell'utente sulla mappa interrompe l'inquadratura automatica
-    ['dragstart', 'zoomstart'].forEach((ev) => map.on(ev, (e) => { if (e.originalEvent) inquadrata = false; }));
+    ['dragstart', 'zoomstart'].forEach((ev) => map.on(ev, (e) => {
+      if (!e.originalEvent) return;
+      inquadrata = false;
+      if (navigando) smettiDiSeguire();
+    }));
 
     let freno = 0;
     map.on('move', () => {
@@ -543,10 +560,12 @@
     if (r.mio) chiediPercorsi(tutte.slice(0, 3).map((v) => v.i));
   }
   function mostrata() {
+    if (navigando && meta != null) return meta;
     return fissata != null ? fissata : (vicine[0] ? vicine[0].i : null);
   }
 
   function scegli(i) {
+    if (navigando) return;   // in navigazione la destinazione non cambia
     fissata = i;
     if (stato === 'mini') imposta('media');
     mostra();
@@ -585,11 +604,12 @@
     $('scheda').classList.remove('nascosta');
     $('mirino').hidden = r.mio;
 
-    const arrivato = r.mio && d < 15;
+    const arrivato = r.mio && d < SOGLIA_ARRIVO;
     $('contesto').textContent = arrivato ? 'Ci sei, è qui accanto'
+      : navigando ? 'Stai andando qui'
       : fissata != null ? 'Hai scelto'
       : (r.mio ? 'La più vicina a te' : 'La più vicina al centro');
-    $('btn-sblocca').hidden = fissata == null;
+    $('btn-sblocca').hidden = fissata == null || navigando;
 
     if (cambiata && dist.u === ultimaUnita && ultimaMostrata != null) animaNumero(ultimoValore, dist.v);
     else { giro++; $('dist-num').textContent = cifre(dist.v); }
@@ -609,9 +629,11 @@
     $('nota').textContent = nota;
     $('nota').hidden = !nota;
 
-    $('btn-vai').href = $('mini-vai').href = suApple
+    $('btn-esterno').href = $('mini-vai').href = suApple
       ? 'https://maps.apple.com/?daddr=' + p[0] + ',' + p[1] + '&dirflg=w'
       : 'https://www.google.com/maps/dir/?api=1&destination=' + p[0] + ',' + p[1] + '&travelmode=walking';
+    aggiornaPulsantiVai(r.mio);
+    if (navigando && arrivato && !arrivoFatto) arrivo(p[2]);
 
     // Barra compatta
     $('mini-num').textContent = cifre(dist.v);
@@ -663,6 +685,114 @@
   }
 
   function aggiorna() { calcola(); mostra(); }
+
+  // ---------- Navigazione "Vai" ----------
+  // Pulsante principale: "Vai" (naviga dentro Sete), "Termina" durante la navigazione.
+  // Senza posizione GPS "Vai" non ha senso: resta solo il link al navigatore esterno.
+  const ICONA_PASSO = '<circle cx="13" cy="4.2" r="2.2" fill="currentColor"/><path d="M13.5 8.5 10 10.2l-1.2 4M13.5 8.5l1.2 4.3 3 1.7M13.5 8.5l-1.3 6-3.2 5.5M12.2 14.5l3 2.5.8 4" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>';
+  function aggiornaPulsantiVai(conPosizione) {
+    $('btn-vai').hidden = !conPosizione;
+    $('btn-vai').classList.toggle('fine', navigando);
+    $('vai-testo').textContent = navigando ? 'Termina' : 'Vai';
+    $('btn-vai').setAttribute('aria-label', navigando ? 'Termina la navigazione' : 'Vai alla fontanella, con le indicazioni dentro Sete');
+    $('vai-icona').style.display = navigando ? 'none' : '';
+    $('btn-esterno').classList.toggle('secondario', conPosizione);
+    $('esterno-testo').textContent = conPosizione ? (suApple ? 'Apri in Mappe' : 'Apri in Google Maps') : 'Indicazioni a piedi';
+    // barra compatta: avvia o termina, oppure il link esterno se manca la posizione
+    $('mini-vai').hidden = conPosizione;
+    $('mini-azione').hidden = !conPosizione;
+    $('mini-azione').classList.toggle('fine', navigando);
+    $('mini-azione').setAttribute('aria-label', navigando ? 'Termina la navigazione' : 'Vai alla fontanella');
+    $('mini-azione-icona').innerHTML = navigando
+      ? '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>'
+      : ICONA_PASSO;
+    $('btn-centra').classList.toggle('fuori', navigando && !seguendo);
+  }
+
+  async function tieniSchermoAcceso() {
+    try {
+      if (!navigando || !navigator.wakeLock || bloccoSchermo || document.visibilityState !== 'visible') return;
+      const b = await navigator.wakeLock.request('screen');
+      if (!navigando) { b.release().catch(() => {}); return; }
+      bloccoSchermo = b;
+      b.addEventListener('release', () => { if (bloccoSchermo === b) bloccoSchermo = null; });
+    } catch (e) { /* schermo non bloccabile: pazienza */ }
+  }
+  function lasciaSchermo() {
+    try {
+      const b = bloccoSchermo;
+      bloccoSchermo = null;
+      if (b) b.release().catch(() => {});
+    } catch (e) { /* niente */ }
+  }
+  document.addEventListener('visibilitychange', () => { if (navigando) tieniSchermoAcceso(); });
+
+  // La mappa si centra su di te, con zoom da camminata.
+  function seguiMappa(primo) {
+    if (!map || !io || !navigando || !seguendo) return;
+    inquadrata = false;
+    map.easeTo({
+      center: [io.lon, io.lat],
+      zoom: primo ? ZOOM_CAMMINO : map.getZoom(),
+      padding: margini(),
+      duration: primo ? 1000 : 800,
+      essential: true
+    });
+  }
+  function smettiDiSeguire() {
+    if (!seguendo) return;
+    seguendo = false;
+    aggiornaPulsantiVai(riferimento().mio);
+    applicaMargini();
+  }
+  function ritornaASeguire() {
+    seguendo = true;
+    aggiornaPulsantiVai(riferimento().mio);
+    seguiMappa(true);
+  }
+
+  function iniziaNavigazione() {
+    const i = mostrata();
+    if (i == null || !riferimento().mio || navigando) return;
+    chiediBussola();
+    meta = i;
+    fissata = i;
+    navigando = true;
+    seguendo = true;
+    arrivoFatto = false;
+    nascondiArrivo();
+    imposta('mini', true);
+    tieniSchermoAcceso();
+    mostra();
+    seguiMappa(true);
+  }
+  function finisciNavigazione() {
+    if (!navigando) return;
+    navigando = false;
+    seguendo = false;
+    meta = null;
+    clearTimeout(attesaArrivo);
+    nascondiArrivo();
+    lasciaSchermo();
+    imposta('media');
+    applicaMargini();
+    if (punti.length) mostra();
+  }
+
+  function nascondiArrivo() { $('arrivo').hidden = true; }
+  function arrivo(tipo) {
+    arrivoFatto = true;
+    $('arrivo-figura').innerHTML = figura(tipo);
+    $('arrivo-titolo').textContent = 'Sei arrivato';
+    $('arrivo-testo').textContent = 'Buona bevuta!';
+    $('arrivo').hidden = false;
+    if (navigator.vibrate) { try { navigator.vibrate([80, 60, 80]); } catch (e) { /* niente */ } }
+    clearTimeout(attesaArrivo);
+    attesaArrivo = setTimeout(finisciNavigazione, 6000);
+  }
+  $('arrivo').addEventListener('click', finisciNavigazione);
+  $('btn-vai').addEventListener('click', () => { if (navigando) finisciNavigazione(); else iniziaNavigazione(); });
+  $('mini-azione').addEventListener('click', () => { if (navigando) finisciNavigazione(); else iniziaNavigazione(); });
 
   // ---------- Freccia della barra compatta ----------
   // Punta verso la fontanella: con la bussola ruota mentre giri il telefono,
@@ -777,7 +907,7 @@
     window.addEventListener('pointerup', su);
     window.addEventListener('pointercancel', su);
     $('maniglia').addEventListener('click', () => imposta(stato === 'media' ? 'aperta' : 'media'));
-    $('compatta').addEventListener('click', (e) => { if (!e.target.closest('a')) imposta('media'); });
+    $('compatta').addEventListener('click', (e) => { if (!e.target.closest('a, button')) imposta('media'); });
   })();
 
   if ('ResizeObserver' in window) new ResizeObserver(misuraScheda).observe($('cima'));
@@ -802,6 +932,98 @@
       map.fitBounds(b, { padding: { top: 90, bottom: 70, left: 60, right: 76 }, maxZoom: 17, duration: 1100, essential: true });
     } else {
       map.easeTo({ center: [p[1], p[0]], zoom: Math.max(map.getZoom(), 15.5), duration: 900, essential: true });
+    }
+  }
+
+  // ---------- Condivisione ----------
+  let attesaAvviso = null;
+  function avviso(testo) {
+    const el = $('avviso');
+    el.textContent = testo;
+    el.hidden = false;
+    // si riavvia l'animazione se l'avviso è già visibile
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = '';
+    clearTimeout(attesaAvviso);
+    attesaAvviso = setTimeout(() => { el.hidden = true; }, 2200);
+  }
+  function linkFontanella(i) {
+    return location.origin + location.pathname + '?f=' + punti[i][0].toFixed(5) + ',' + punti[i][1].toFixed(5);
+  }
+  async function copiaTesto(testo) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(testo);
+        return true;
+      }
+    } catch (e) { /* si prova il metodo vecchio */ }
+    try {
+      const t = document.createElement('textarea');
+      t.value = testo;
+      t.setAttribute('readonly', '');
+      t.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+      document.body.appendChild(t);
+      t.select();
+      const ok = document.execCommand('copy');
+      t.remove();
+      return ok;
+    } catch (e) { return false; }
+  }
+  async function condividi() {
+    const i = mostrata();
+    if (i == null) return;
+    const p = punti[i], url = linkFontanella(i);
+    const testo = 'Acqua fresca qui: ' + (p[3] || strade.get(i) || TIPI[p[2]].nome);
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Sete', text: testo, url: url });
+        return;
+      } catch (e) {
+        if (e && e.name === 'AbortError') return;   // hai chiuso il foglio di condivisione
+      }
+    }
+    avviso(await copiaTesto(url) ? 'Link copiato' : 'Non riesco a copiare il link');
+  }
+  $('btn-condividi').addEventListener('click', condividi);
+
+  // Apertura da un link condiviso: ?f=lat,lon
+  let datiLink = null;
+  let linkDaTogliere = false;
+  try {
+    const par = new URLSearchParams(location.search);
+    linkDaTogliere = par.has('f');
+    const m = /^(-?\d{1,3}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)$/.exec(par.get('f') || '');
+    if (m && Math.abs(+m[1]) <= 90 && Math.abs(+m[2]) <= 180) datiLink = { lat: +m[1], lon: +m[2] };
+  } catch (e) { /* link non valido: si ignora */ }
+  function apriDaLink() {
+    if (!linkDaTogliere || !punti.length || !map) return;
+    linkDaTogliere = false;
+    // il parametro si toglie subito: un ricaricamento non deve ripetere la scelta
+    try {
+      const url = new URL(location.href);
+      url.searchParams.delete('f');
+      history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+    } catch (e) { /* niente */ }
+    const l = datiLink;
+    datiLink = null;
+    if (!l) return;
+    let migliore = null, min = RAGGIO_LINK;
+    for (let i = 0; i < punti.length; i++) {
+      const d = metri(l.lat, l.lon, punti[i][0], punti[i][1]);
+      if (d <= min) { min = d; migliore = i; }
+    }
+    primaVista = false;
+    if (migliore != null) {
+      if (!passa(migliore)) {
+        filtro = 't';
+        segnaFiltri();
+        ridisegnaPunti();
+      }
+      scegli(migliore);
+    } else {
+      inquadrata = false;
+      map.easeTo({ center: [l.lon, l.lat], zoom: 16.5, duration: 900, essential: true });
     }
   }
 
@@ -918,7 +1140,8 @@
     ioLontano = !!vicine[0] && vicine[0].d > LONTANO_DA_ROMA;
     if (ioLontano) calcola();
     mostra();
-    if (primaVista && !ioLontano) { primaVista = false; inquadra(); }
+    if (navigando) seguiMappa(false);
+    else if (primaVista && !ioLontano) { primaVista = false; inquadra(); }
   }
   function posizioneNegata(err) {
     if (err && err.code === 1) gpsNegato = true;
@@ -935,16 +1158,17 @@
   }
 
   // ---------- Comandi ----------
-  $('btn-piu').addEventListener('click', () => { inquadrata = false; if (map) map.zoomIn({ duration: 350 }); });
-  $('btn-meno').addEventListener('click', () => { inquadrata = false; if (map) map.zoomOut({ duration: 350 }); });
+  $('btn-piu').addEventListener('click', () => { inquadrata = false; if (navigando) smettiDiSeguire(); if (map) map.zoomIn({ duration: 350 }); });
+  $('btn-meno').addEventListener('click', () => { inquadrata = false; if (navigando) smettiDiSeguire(); if (map) map.zoomOut({ duration: 350 }); });
   $('btn-centra').addEventListener('click', () => {
     if (!map) return;
     chiediBussola();
-    if (io && !ioLontano) { fissata = null; aggiorna(); inquadra(); }
+    if (navigando) ritornaASeguire();
+    else if (io && !ioLontano) { fissata = null; aggiorna(); inquadra(); }
     else if (io && ioLontano) map.flyTo({ center: ROMA, zoom: 15.4, duration: 1200 });
     else { primaVista = true; seguiPosizione(); }
   });
-  $('btn-sblocca').addEventListener('click', () => { fissata = null; aggiorna(); inquadra(); });
+  $('btn-sblocca').addEventListener('click', () => { if (navigando) return; fissata = null; aggiorna(); inquadra(); });
 
   function segnaFiltri() {
     document.querySelectorAll('.filtro').forEach((f) => {
@@ -966,7 +1190,7 @@
     filtro = filtro === b.dataset.t ? 't' : b.dataset.t;
     try { localStorage.setItem(CHIAVE_FILTRO, filtro); } catch (err) { /* niente */ }
     segnaFiltri();
-    if (fissata != null && !passa(fissata)) fissata = null;
+    if (!navigando && fissata != null && !passa(fissata)) fissata = null;
     ridisegnaPunti();
     aggiorna();
     if (fissata == null && riferimento().mio) inquadra();
@@ -998,6 +1222,7 @@
     b.textContent = 'Scarico\u2026';
     try {
       await scarica();
+      finisciNavigazione();
       fissata = null; ultimaMostrata = null; sceltoIndice = null;
       if (segnoScelto) { segnoScelto.remove(); segnoScelto = null; }
       strade.clear();
@@ -1024,6 +1249,7 @@
     aggiornaSegni();
     $('sipario').classList.add('via');
     if (io && !ioLontano && primaVista) { primaVista = false; setTimeout(inquadra, 350); }
+    apriDaLink();
   }
 
   async function caricaDati() {
