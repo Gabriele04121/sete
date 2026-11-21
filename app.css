@@ -747,6 +747,51 @@ dialog::backdrop { background: rgb(15 21 20 / 0.55); animation: velo 0.3s ease; 
 .legenda strong { display: block; font-size: 16px; }
 .legenda span { font-size: 14.5px; line-height: 1.45; color: var(--tenue); }
 
+/* Scelta della mappa nella finestra informazioni */
+.tema-riga { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.tema-riga > span { font-size: 15px; font-weight: 650; }
+.tema {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--ghisa-su);
+  box-shadow: inset 0 0 0 1px var(--ghisa-filo);
+}
+.tema button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--tenue);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.tema button[aria-pressed="true"] { background: var(--ottone); color: #1a2220; }
+
+/* ---------- Sera: mappa e comandi scuri ---------- */
+
+.notte #map { background: #1b2321; }
+.notte .tasto { background: var(--ghisa-su); color: var(--marmo); box-shadow: 0 0 0 1px var(--ghisa-filo), var(--ombra); }
+.notte .posizione.attivo { background: var(--ghisa); color: var(--ottone); }
+.notte .filtro { background: var(--ghisa-su); color: var(--marmo); box-shadow: 0 0 0 1px var(--ghisa-filo), 0 3px 10px rgb(0 0 0 / 0.3); }
+.notte .filtro.attivo { background: var(--marmo); color: var(--ghisa); }
+.notte .pallino { box-shadow: 0 0 0 2px var(--ghisa-su); }
+.notte .pallino.t-n { background: #dfe6e3; }
+.notte .filtro.attivo .pallino { box-shadow: 0 0 0 2px var(--marmo); }
+.notte .filtro.attivo .pallino.t-n { background: var(--ghisa); }
+.notte .mirino {
+  background:
+    linear-gradient(var(--marmo), var(--marmo)) center / 2.5px 100% no-repeat,
+    linear-gradient(var(--marmo), var(--marmo)) center / 100% 2.5px no-repeat;
+}
+.notte .maplibregl-ctrl-attrib { background: rgb(31 41 39 / 0.8); color: var(--tenue); }
+.notte .maplibregl-ctrl-attrib a { color: var(--marmo); }
+.notte .maplibregl-ctrl-attrib-button { filter: invert(1); }
+
 /* ---------- Schermi larghi ---------- */
 
 @media (min-width: 900px) {

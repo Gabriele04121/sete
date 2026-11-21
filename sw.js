@@ -1,6 +1,6 @@
 // Sete: funzionamento offline.
 // Cambia il numero di versione quando modifichi i file, così il telefono scarica quelli nuovi.
-const VERSIONE = 'sete-v6';
+const VERSIONE = 'sete-v7';
 const MAPPA = 'sete-mappa';
 const MAX_TASSELLI = 1500;
 
@@ -46,6 +46,24 @@ self.addEventListener('fetch', (e) => {
           if (risposta.ok) { c.put(req, risposta.clone()); sfoltisci(); }
           return risposta;
         } catch (err) {
+          if (salvato) return salvato;
+          throw err;
+        }
+      })
+    );
+    return;
+  }
+
+  // Fontanelle pronte: prima la rete, così l'app vede subito l'ultima copia pubblicata.
+  if (url.origin === self.location.origin && url.pathname.endsWith('/fontanelle.json')) {
+    e.respondWith(
+      caches.open(VERSIONE).then(async (c) => {
+        try {
+          const r = await fetch(req.url, { cache: 'no-cache' });
+          if (r.ok) c.put(req, r.clone());
+          return r;
+        } catch (err) {
+          const salvato = await c.match(req, { ignoreSearch: true });
           if (salvato) return salvato;
           throw err;
         }

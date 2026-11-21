@@ -7,6 +7,9 @@
   const ROMA = [12.4829, 41.8933];                 // longitudine, latitudine
   const RIQUADRO = '41.65,12.23,42.10,12.86';      // sud, ovest, nord, est
   const STILE_MAPPA = 'https://tiles.openfreemap.org/styles/liberty';
+  const STILE_NOTTE = 'https://tiles.openfreemap.org/styles/dark';
+  const SERVER_PERCORSI = 'https://routing.openstreetmap.de/routed-foot/route/v1/driving/';
+  const PACCHETTO = 'fontanelle.json';   // copia delle fontanelle pubblicata insieme all'app
   const SERVER_OVERPASS = [
     'https://overpass-api.de/api/interpreter',
     'https://overpass.private.coffee/api/interpreter'
@@ -18,6 +21,7 @@
   const MAX_SEGNI = 150;
   const CHIAVE = 'sete.fontanelle.v2';
   const CHIAVE_FILTRO = 'sete.filtro';
+  const CHIAVE_TEMA = 'sete.tema';
   const GPS_INCERTO = 80;        // metri: oltre, avvisa che la posizione è approssimativa
 
   const $ = (id) => document.getElementById(id);
@@ -162,6 +166,25 @@
     return false;
   }
 
+  // Copia pronta delle fontanelle, aggiornata ogni settimana da GitHub: il primo avvio è immediato.
+  async function leggiPacchetto() {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 15000);
+      const r = await fetch(PACCHETTO, { cache: 'no-cache', signal: ctrl.signal });
+      clearTimeout(timer);
+      if (!r.ok) return null;
+      const j = await r.json();
+      if (!j || !Array.isArray(j.punti) || j.punti.length < 50 || !j.quando) return null;
+      return j;
+    } catch (e) { return null; }
+  }
+  function usaPacchetto(j) {
+    punti = j.punti;
+    quando = j.quando;
+    try { localStorage.setItem(CHIAVE, JSON.stringify({ quando, punti })); } catch (e) { /* memoria piena */ }
+  }
+
   async function scarica() {
     const domanda = '[out:json][timeout:60];(' +
       'nwr["amenity"="drinking_water"](' + RIQUADRO + ');' +
@@ -235,22 +258,82 @@
     ]
   };
 
-  async function stileMappa() {
+  // ---------- Mappa chiara di giorno, scura di sera ----------
+  let notte = false;
+  let temaScelto = 'auto';   // auto, chiaro o scuro
+  try { temaScelto = localStorage.getItem(CHIAVE_TEMA) || 'auto'; } catch (e) { /* niente */ }
+
+  // Alba e tramonto del giorno (formula astronomica semplificata, precisa a pochi minuti).
+  function sole(quandoMs, lat, lon) {
+    const J = quandoMs / 864e5 + 2440587.5;
+    const n = Math.round(J - 2451545 + 0.0008);
+    const Js = n - lon / 360;
+    const M = (357.5291 + 0.98560028 * Js) % 360;
+    const C = 1.9148 * Math.sin(M * RAD) + 0.02 * Math.sin(2 * M * RAD) + 0.0003 * Math.sin(3 * M * RAD);
+    const L = (M + C + 180 + 102.9372) % 360;
+    const Jt = 2451545 + Js + 0.0053 * Math.sin(M * RAD) - 0.0069 * Math.sin(2 * L * RAD);
+    const decl = Math.asin(Math.sin(L * RAD) * Math.sin(23.4397 * RAD));
+    const cosW = (Math.sin(-0.833 * RAD) - Math.sin(lat * RAD) * Math.sin(decl)) / (Math.cos(lat * RAD) * Math.cos(decl));
+    const W = Math.acos(Math.max(-1, Math.min(1, cosW))) / RAD;
+    const ms = (g) => (g - 2440587.5) * 864e5;
+    return { alba: ms(Jt - W / 360), tramonto: ms(Jt + W / 360) };
+  }
+  function eNotte() {
+    if (temaScelto === 'scuro') return true;
+    if (temaScelto === 'chiaro') return false;
+    const ora = Date.now(), lat = io ? io.lat : ROMA[1], lon = io ? io.lon : ROMA[0];
+    const s = sole(ora, lat, lon), crepuscolo = 25 * 60e3;
+    return ora < s.alba - crepuscolo || ora > s.tramonto + crepuscolo;
+  }
+
+  const stiliLetti = {};
+  async function stileMappa(scuro) {
+    const url = scuro ? STILE_NOTTE : STILE_MAPPA;
     try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 9000);
-      const r = await fetch(STILE_MAPPA, { signal: ctrl.signal });
-      clearTimeout(timer);
-      if (!r.ok) throw new Error('stile');
-      const stile = await r.json();
+      if (!stiliLetti[url]) {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 9000);
+        const r = await fetch(url, { signal: ctrl.signal });
+        clearTimeout(timer);
+        if (!r.ok) throw new Error('stile');
+        stiliLetti[url] = await r.json();
+      }
+      const stile = JSON.parse(JSON.stringify(stiliLetti[url]));
       // Via i simboli dei negozi e gli edifici in 3D: sulla mappa devono risaltare le fontanelle.
       const nascosti = ['poi_r20', 'poi_r7', 'poi_r1', 'building-3d'];
       stile.layers = stile.layers.filter((l) => nascosti.indexOf(l.id) === -1);
       return stile;
     } catch (e) {
-      return RASTER; // se la mappa vettoriale non risponde si usa quella classica di OpenStreetMap
+      // se la mappa vettoriale non risponde si usa quella classica di OpenStreetMap, scurita di sera
+      const raster = JSON.parse(JSON.stringify(RASTER));
+      if (scuro) {
+        raster.layers[0].paint['background-color'] = '#1b2321';
+        raster.layers[1].paint = { 'raster-brightness-max': 0.55, 'raster-saturation': -0.5, 'raster-contrast': 0.1 };
+      }
+      return raster;
     }
   }
+
+  function segnaTema() {
+    document.documentElement.classList.toggle('notte', notte);
+    document.querySelectorAll('.tema button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tema === temaScelto)));
+  }
+  let giroTema = 0;
+  async function controllaTema() {
+    const n = eNotte();
+    if (n === notte) return;
+    notte = n;
+    segnaTema();
+    if (!map) return;
+    const mio = ++giroTema;
+    const stile = await stileMappa(n);
+    if (mio !== giroTema) return;
+    mappaPronta = false;
+    map.setStyle(stile, { diff: false });
+    map.once('style.load', aggiungiStrati);
+  }
+  setInterval(controllaTema, 5 * 60e3);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) controllaTema(); });
 
   function margini() {
     const alto = $('filtri').getBoundingClientRect().bottom;
@@ -258,6 +341,7 @@
     return { top: Math.round(alto), bottom: Math.round(visibile()), left: 0, right: 0 };
   }
   let marginiInSospeso = false;
+  let inquadrata = false;    // vero finché l'utente non sposta la mappa dopo un'inquadratura
   function applicaMargini() {
     const m = margini();
     document.documentElement.style.setProperty('--alto', m.top + 'px');
@@ -267,12 +351,17 @@
     if (map.isMoving()) { marginiInSospeso = true; return; }
     const p = map.getPadding();
     if (p.top !== m.top || p.bottom !== m.bottom || p.left !== m.left || p.right !== m.right) {
-      map.easeTo({ padding: m, duration: 300 });
+      // Se la mappa sta inquadrando te e la fontanella, si rifà l'inquadratura con i margini nuovi:
+      // spostare solo i margini farebbe scivolare la fontanella sotto i filtri o sotto la scheda.
+      if (inquadrata) { map.setPadding(m); inquadra(); }
+      else map.easeTo({ padding: m, duration: 300 });
     }
   }
 
   async function creaMappa() {
-    const style = await stileMappa();
+    notte = eNotte();
+    segnaTema();
+    const style = await stileMappa(notte);
     map = new maplibregl.Map({
       container: 'map',
       style: style,
@@ -295,34 +384,7 @@
     const stileLetto = new Promise((ok) => map.once('style.load', () => { stilePronto = true; ok(); }));
     await Promise.race([stileLetto, new Promise((ok) => setTimeout(ok, 6000))]);
     const quandoPronta = (f) => (stilePronto ? f() : stileLetto.then(f));
-    quandoPronta(() => {
-      map.addSource('via', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      map.addLayer({
-        id: 'via-bordo', type: 'line', source: 'via',
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#ffffff', 'line-width': 8, 'line-opacity': 0.9 }
-      });
-      map.addLayer({
-        id: 'via', type: 'line', source: 'via',
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#1f2927', 'line-width': 4.5, 'line-dasharray': [0.01, 2] }
-      });
-      map.addSource('fontanelle', { type: 'geojson', data: geojson() });
-      map.addLayer({
-        id: 'punti', type: 'circle', source: 'fontanelle',
-        paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 1.3, 12, 2.8, 14, 5, 15, 6.5],
-          'circle-color': ['match', ['get', 't'], 'n', '#1f2927', 'm', '#c9972c', '#0b84b5'],
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 9, 0.3, 12, 0.9, 14, 1.8],
-          'circle-opacity': ['interpolate', ['linear'], ['zoom'], ZOOM_SEGNI - 0.3, 1, ZOOM_SEGNI + 0.2, 0],
-          'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], ZOOM_SEGNI - 0.3, 1, ZOOM_SEGNI + 0.2, 0]
-        }
-      });
-      mappaPronta = true;
-      aggiornaVia();
-      aggiornaSegni();
-    });
+    quandoPronta(aggiungiStrati);
 
     map.on('click', (e) => {
       if (!mappaPronta || map.getZoom() >= ZOOM_SEGNI + 0.2) return;
@@ -339,6 +401,8 @@
     });
 
     map.on('rotate', disegnaCono);
+    // un gesto dell'utente sulla mappa interrompe l'inquadratura automatica
+    ['dragstart', 'zoomstart'].forEach((ev) => map.on(ev, (e) => { if (e.originalEvent) inquadrata = false; }));
 
     let freno = 0;
     map.on('move', () => {
@@ -352,6 +416,37 @@
       calcola();
       mostra();
     });
+  }
+
+  // Linea del percorso e punti delle fontanelle, ridisegnati anche quando cambia lo stile.
+  function aggiungiStrati() {
+    if (map.getSource('fontanelle')) return;
+    map.addSource('via', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({
+      id: 'via-bordo', type: 'line', source: 'via',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': notte ? '#121917' : '#ffffff', 'line-width': 8, 'line-opacity': 0.85 }
+    });
+    map.addLayer({
+      id: 'via', type: 'line', source: 'via',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': notte ? '#f1f3f0' : '#1f2927', 'line-width': 4.5, 'line-dasharray': [0.01, 2] }
+    });
+    map.addSource('fontanelle', { type: 'geojson', data: geojson() });
+    map.addLayer({
+      id: 'punti', type: 'circle', source: 'fontanelle',
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 1.3, 12, 2.8, 14, 5, 15, 6.5],
+        'circle-color': ['match', ['get', 't'], 'n', notte ? '#dfe6e3' : '#1f2927', 'm', '#c9972c', notte ? '#35b3e6' : '#0b84b5'],
+        'circle-stroke-color': notte ? '#121917' : '#ffffff',
+        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 9, 0.3, 12, 0.9, 14, 1.8],
+        'circle-opacity': ['interpolate', ['linear'], ['zoom'], ZOOM_SEGNI - 0.3, 1, ZOOM_SEGNI + 0.2, 0],
+        'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], ZOOM_SEGNI - 0.3, 1, ZOOM_SEGNI + 0.2, 0]
+      }
+    });
+    mappaPronta = true;
+    aggiornaVia();
+    aggiornaSegni();
   }
 
   function geojson() {
@@ -424,17 +519,74 @@
     aggiornaSegni();
   }
 
+  function lineaVia() {
+    const i = mostrata(), r = riferimento();
+    if (i == null || !r.mio) return null;
+    const fine = [punti[i][1], punti[i][0]], rt = percorsoValido(i, r);
+    return rt ? [[r.lon, r.lat]].concat(rt.geom, [fine]) : [[r.lon, r.lat], fine];
+  }
   function aggiornaVia() {
     if (!mappaPronta) return;
-    const i = mostrata(), r = riferimento();
+    const linea = lineaVia();
     const dati = { type: 'FeatureCollection', features: [] };
-    if (i != null && r.mio) {
-      dati.features.push({
-        type: 'Feature', properties: {},
-        geometry: { type: 'LineString', coordinates: [[r.lon, r.lat], [punti[i][1], punti[i][0]]] }
-      });
-    }
+    if (linea) dati.features.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: linea } });
     map.getSource('via').setData(dati);
+  }
+
+  // ---------- Percorsi a piedi veri ----------
+  // La linea d'aria inganna: un raccordo o un fiume possono allungare molto la strada.
+  // Si chiede il percorso a piedi per le candidate più vicine e si sceglie la più vicina camminando.
+  const percorsi = new Map();   // indice -> {d, geom, o: {lat, lon}, dritta} oppure {errore, t}
+  const percorsiInCorso = new Set();
+  let percorsiFalliti = 0;
+  function percorsoValido(i, r) {
+    const rt = percorsi.get(i);
+    if (!rt || rt.errore || !r.mio || metri(rt.o.lat, rt.o.lon, r.lat, r.lon) > 120) return null;
+    return rt;
+  }
+  // Distanza da mostrare: a piedi se c'è il percorso, altrimenti in linea d'aria.
+  function distanzaVera(i, r) {
+    const p = punti[i], dritta = metri(r.lat, r.lon, p[0], p[1]);
+    const rt = percorsoValido(i, r);
+    if (!rt) return { d: dritta, aPiedi: false };
+    // mentre cammini si corregge con quanto ti sei avvicinato, senza richiedere il percorso a ogni passo
+    return { d: Math.max(dritta, rt.d + dritta - rt.dritta), aPiedi: true };
+  }
+  let attesaRicalcolo = null;
+  function chiediPercorsi(indici) {
+    const r = riferimento();
+    if (!r.mio || !navigator.onLine || percorsiFalliti >= 3) return;
+    indici.forEach((i) => {
+      if (percorsiInCorso.has(i)) return;
+      const rt = percorsi.get(i);
+      if (rt && rt.errore && Date.now() - rt.t < 60000) return;
+      if (rt && !rt.errore && metri(rt.o.lat, rt.o.lon, r.lat, r.lon) < 50) return;
+      const p = punti[i], o = { lat: r.lat, lon: r.lon };
+      if (metri(o.lat, o.lon, p[0], p[1]) > 5000) return;   // oltre, a piedi non ha senso
+      percorsiInCorso.add(i);
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 9000);
+      fetch(SERVER_PERCORSI + o.lon + ',' + o.lat + ';' + p[1] + ',' + p[0] + '?overview=full&geometries=geojson', { signal: ctrl.signal })
+        .then((risp) => (risp.ok ? risp.json() : Promise.reject(new Error('HTTP ' + risp.status))))
+        .then((j) => {
+          const via = j && j.code === 'Ok' && j.routes && j.routes[0];
+          if (!via) throw new Error('nessun percorso');
+          percorsi.set(i, { d: via.distance, geom: via.geometry.coordinates, o, dritta: metri(o.lat, o.lon, p[0], p[1]) });
+          percorsiFalliti = 0;
+        })
+        .catch(() => {
+          percorsi.set(i, { errore: true, t: Date.now() });
+          // se il servizio non risponde per tre volte di fila si resta sulla linea d'aria
+          percorsiFalliti++;
+          if (percorsiFalliti === 3) setTimeout(() => { percorsiFalliti = 0; }, 5 * 60e3);
+        })
+        .finally(() => {
+          clearTimeout(timer);
+          percorsiInCorso.delete(i);
+          clearTimeout(attesaRicalcolo);
+          attesaRicalcolo = setTimeout(() => { if (punti.length) aggiorna(); }, 120);
+        });
+    });
   }
 
   // ---------- Fontanella più vicina ----------
@@ -450,7 +602,10 @@
       if (passa(i)) tutte.push({ i, d: metri(r.lat, r.lon, punti[i][0], punti[i][1]) });
     }
     tutte.sort((a, b) => a.d - b.d);
-    vicine = tutte.slice(0, 7);
+    // le più vicine in linea d'aria, riordinate con la distanza a piedi quando è nota
+    vicine = tutte.slice(0, 8).map((v) => Object.assign({ i: v.i }, distanzaVera(v.i, r)))
+      .sort((a, b) => a.d - b.d).slice(0, 7);
+    if (r.mio) chiediPercorsi(tutte.slice(0, 3).map((v) => v.i));
   }
   function mostrata() {
     return fissata != null ? fissata : (vicine[0] ? vicine[0].i : null);
@@ -485,7 +640,10 @@
       return;
     }
     const p = punti[i], r = riferimento(), tipo = TIPI[p[2]];
-    const d = metri(r.lat, r.lon, p[0], p[1]);
+    const vera = distanzaVera(i, r), d = vera.d;
+    if (r.mio) chiediPercorsi([i]);
+    const rt = percorsi.get(i);
+    const inLinea = r.mio && !vera.aPiedi && rt && rt.errore ? ' in linea d\u2019aria' : '';
     const dist = distanza(d);
     const cambiata = i !== ultimaMostrata;
 
@@ -505,7 +663,7 @@
 
     const strada = strade.get(i);
     $('titolo').textContent = p[3] || strada || tipo.nome;
-    $('dettaglio').textContent = ((p[3] || strada) ? tipo.nome + ', ' : '') + minuti(d) + ', verso ' + verso(r.lat, r.lon, p[0], p[1]);
+    $('dettaglio').textContent = ((p[3] || strada) ? tipo.nome + ', ' : '') + minuti(d) + inLinea + ', verso ' + verso(r.lat, r.lon, p[0], p[1]);
     $('spiega').textContent = tipo.spiega;
     if (p[2] !== ultimoTipo) { $('figura').innerHTML = figura(p[2]); ultimoTipo = p[2]; }
 
@@ -531,6 +689,8 @@
     ultimaMostrata = i;
     segnaScelto(i);
     aggiornaVia();
+    // Se la fontanella o il suo percorso cambiano e non hai toccato la mappa, l'inquadratura li segue.
+    if (inquadrata && chiaveInquadra() !== ultimaInquadra) inquadra();
     cercaStrada(i);
     riempiElenco();
     misuraScheda();
@@ -690,12 +850,20 @@
   largo.addEventListener('change', () => { misuraScheda(); applicaMargini(); });
 
   // ---------- Inquadrature ----------
+  let ultimaInquadra = '';
+  function chiaveInquadra() {
+    const i = mostrata();
+    return i + (i != null && percorsoValido(i, riferimento()) ? 'p' : '');
+  }
   function inquadra() {
     const i = mostrata();
     if (!map || i == null) return;
     const p = punti[i];
+    inquadrata = true;
+    ultimaInquadra = chiaveInquadra();
     if (io && !ioLontano && metri(io.lat, io.lon, p[0], p[1]) < 4000) {
       const b = new maplibregl.LngLatBounds([io.lon, io.lat], [io.lon, io.lat]).extend([p[1], p[0]]);
+      (lineaVia() || []).forEach((c) => b.extend(c));
       map.fitBounds(b, { padding: { top: 90, bottom: 70, left: 60, right: 76 }, maxZoom: 17, duration: 1100, essential: true });
     } else {
       map.easeTo({ center: [p[1], p[0]], zoom: Math.max(map.getZoom(), 15.5), duration: 900, essential: true });
@@ -832,8 +1000,8 @@
   }
 
   // ---------- Comandi ----------
-  $('btn-piu').addEventListener('click', () => map && map.zoomIn({ duration: 350 }));
-  $('btn-meno').addEventListener('click', () => map && map.zoomOut({ duration: 350 }));
+  $('btn-piu').addEventListener('click', () => { inquadrata = false; if (map) map.zoomIn({ duration: 350 }); });
+  $('btn-meno').addEventListener('click', () => { inquadrata = false; if (map) map.zoomOut({ duration: 350 }); });
   $('btn-centra').addEventListener('click', () => {
     if (!map) return;
     chiediBussola();
@@ -883,6 +1051,13 @@
     if (bussolaChiesta) return 'Bussola: nessuna lettura. Controlla che il browser abbia il permesso per movimento e orientamento.';
     return 'Bussola: nessuna lettura dal telefono.';
   }
+  document.querySelectorAll('.tema button').forEach((b) => b.addEventListener('click', () => {
+    temaScelto = b.dataset.tema;
+    try { localStorage.setItem(CHIAVE_TEMA, temaScelto); } catch (e) { /* niente */ }
+    segnaTema();
+    controllaTema();
+  }));
+
   $('btn-info').addEventListener('click', () => {
     $('info-dati').textContent = testoDati();
     $('info-bussola').textContent = testoBussola();
@@ -925,9 +1100,23 @@
 
   async function caricaDati() {
     $('btn-riprova').hidden = true;
+    const vecchi = () => Date.now() - quando > GIORNI_VALIDITA * 864e5;
     if (leggiSalvati()) {
-      const vecchi = Date.now() - quando > GIORNI_VALIDITA * 864e5;
-      if (vecchi && navigator.onLine) scarica().then(() => { ridisegnaPunti(); aggiorna(); }).catch(() => {});
+      if (vecchi() && navigator.onLine) {
+        // Prima la copia pubblicata con l'app, poi, se serve ancora, OpenStreetMap.
+        (async () => {
+          const j = await leggiPacchetto();
+          if (j && j.quando > quando) { usaPacchetto(j); strade.clear(); ridisegnaPunti(); aggiorna(); }
+          if (vecchi()) await scarica().then(() => { ridisegnaPunti(); aggiorna(); }).catch(() => {});
+        })();
+      }
+      return true;
+    }
+    $('sipario-testo').textContent = 'Preparo le fontanelle di Roma\u2026';
+    const j = await leggiPacchetto();
+    if (j) {
+      usaPacchetto(j);
+      if (vecchi() && navigator.onLine) scarica().then(() => { ridisegnaPunti(); aggiorna(); }).catch(() => {});
       return true;
     }
     $('sipario-testo').textContent = 'Scarico le fontanelle di Roma. Succede solo la prima volta, può volerci mezzo minuto.';

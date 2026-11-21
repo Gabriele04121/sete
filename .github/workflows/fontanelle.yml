@@ -1,0 +1,48 @@
+# Aggiorna ogni settimana fontanelle.json, la copia delle fontanelle che l'app legge al primo avvio.
+name: Aggiorna le fontanelle
+
+on:
+  schedule:
+    - cron: '17 4 * * 1'   # ogni lunedì mattina
+  workflow_dispatch:        # e a mano, dalla scheda Actions
+  push:
+    branches: [main]
+    paths: ['strumenti/fontanelle.mjs', '.github/workflows/fontanelle.yml']
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: fontanelle
+  cancel-in-progress: false
+
+jobs:
+  aggiorna:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Scarica da OpenStreetMap
+        run: node strumenti/fontanelle.mjs
+      - name: Salva se è cambiato qualcosa
+        id: salva
+        run: |
+          if git diff --quiet -- fontanelle.json && git ls-files --error-unmatch fontanelle.json >/dev/null 2>&1; then
+            echo "cambiato=no" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add fontanelle.json
+          git commit -m "Aggiorna le fontanelle da OpenStreetMap"
+          git push
+          echo "cambiato=si" >> "$GITHUB_OUTPUT"
+      - name: Ripubblica il sito
+        if: steps.salva.outputs.cambiato == 'si'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/${{ github.repository }}/pages/builds" || echo "Pubblicazione già in corso"

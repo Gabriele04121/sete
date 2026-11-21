@@ -25,8 +25,8 @@ Va bene anche qualunque altro hosting di file statici (Netlify, Cloudflare Pages
 - **Android**: apri l'indirizzo in Chrome, tocca il menu con i tre puntini, poi "Aggiungi a schermata Home"
   o "Installa app".
 
-Al primo avvio concedi la posizione e aspetta che scarichi le fontanelle (succede una volta sola,
-poi si aggiornano da sole ogni 30 giorni).
+Al primo avvio concedi la posizione. Le fontanelle arrivano subito dalla copia pubblicata con l'app
+(`fontanelle.json`), poi si aggiornano da sole.
 
 ## Vederla subito sul computer
 
@@ -37,6 +37,9 @@ della mappa: basta spostarla.
 ## Come si usa
 
 - La scheda scura in basso mostra la fontanella più vicina, la distanza, i minuti a piedi e il tipo.
+  Distanza e "più vicina" sono calcolate sul percorso a piedi vero, non in linea d'aria: una fontanella
+  oltre un raccordo o un fiume non viene più indicata come vicina. La linea tratteggiata segue le strade.
+  Se il servizio dei percorsi non risponde, la scheda lo dice ("in linea d'aria").
 - Trascina la scheda verso l'alto (o tocca la maniglia) per leggere com'è fatta e vedere le altre vicine.
 - Trascinala verso il basso per ridurla a una barra sottile e liberare la mappa. La freccia nella barra punta verso
   la fontanella mentre giri il telefono: quando diventa azzurra ce l'hai davanti. Tocca la barra per riaprire la scheda.
@@ -51,6 +54,8 @@ della mappa: basta spostarla.
   Se il fascio è largo, la bussola è incerta: muovi il telefono disegnando un 8 per calibrarla.
 - Senza posizione, la "più vicina" è quella rispetto al centro della mappa: sposta la mappa per esplorare.
 - Il pulsante "i" mostra la legenda, quante fontanelle ci sono e permette di riscaricarle.
+- Di sera la mappa diventa scura da sola, dal tramonto all'alba. Nel pulsante "i" puoi sceglierla sempre chiara
+  o sempre scura.
 
 ## Offline
 
@@ -65,12 +70,20 @@ solo per le zone che hai già guardato.
 | `app.css` | Colori, caratteri, impaginazione |
 | `app.js` | Dati, posizione, calcolo della più vicina. Le impostazioni sono in cima al file |
 | `sw.js` | Funzionamento offline |
+| `fontanelle.json` | Copia pronta delle fontanelle, aggiornata dalla GitHub Action |
+| `strumenti/` | Script che scarica le fontanelle per `fontanelle.json` |
 | `manifest.webmanifest` | Nome e icona dell'app installata |
 | `icons/` | Logo (`logo.svg`) e icone |
 | `fonts/`, `vendor/` | Caratteri (Big Shoulders, Hanken Grotesk) e libreria della mappa (MapLibre), inclusi nel pacchetto |
 
-Se modifichi i file dopo averla installata, cambia `sete-v6` in `sete-v7` in cima a `sw.js`,
+Se modifichi i file dopo averla installata, cambia `sete-v7` in `sete-v8` in cima a `sw.js`,
 così il telefono scarica la versione nuova.
+
+## Fontanelle sempre aggiornate
+
+La GitHub Action `.github/workflows/fontanelle.yml` scarica ogni lunedì le fontanelle da OpenStreetMap con
+`strumenti/fontanelle.mjs` e aggiorna `fontanelle.json`, solo se qualcosa è cambiato. Puoi farla partire a mano
+dalla scheda Actions del repository: "Aggiorna le fontanelle", poi "Run workflow".
 
 ## Dati e licenze
 
@@ -79,6 +92,8 @@ così il telefono scarica la versione nuova.
 - Mappa: stile Liberty servito da OpenFreeMap, gratuito e senza chiave. Se non risponde, l'app passa da sola
   alla mappa classica di OpenStreetMap.
 - Indirizzi: Nominatim (OpenStreetMap), adatto a un uso leggero e personale.
+- Percorsi a piedi: server OSRM di FOSSGIS (routing.openstreetmap.de), lo stesso di openstreetmap.org,
+  per un uso leggero. Mappa scura: stile Dark di OpenFreeMap.
 - MapLibre GL JS: licenza BSD. Caratteri: SIL Open Font License.
 
 I dati sono curati da volontari: una fontanella può essere chiusa, spostata o mancare, e molti nasoni
