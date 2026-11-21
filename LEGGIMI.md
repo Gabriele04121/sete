@@ -43,6 +43,9 @@ della mappa: basta spostarla.
 - La mappa si ingrandisce con due dita, con il doppio tocco o con i pulsanti + e −.
   Da lontano le fontanelle sono punti colorati, da vicino diventano segni animati, diversi per tipo.
 - La freccia a destra riporta la mappa su di te.
+- Il fascio dorato attorno al tuo punto mostra dove sta puntando il telefono, come in Google Maps.
+  Sull'iPhone la bussola si attiva dopo il primo tocco (Safari chiede il permesso per "movimento e orientamento").
+  Se il fascio è largo, la bussola è incerta: muovi il telefono disegnando un 8 per calibrarla.
 - Senza posizione, la "più vicina" è quella rispetto al centro della mappa: sposta la mappa per esplorare.
 - Il pulsante "i" mostra la legenda, quante fontanelle ci sono e permette di riscaricarle.
 
@@ -63,7 +66,7 @@ solo per le zone che hai già guardato.
 | `icons/` | Logo (`logo.svg`) e icone |
 | `fonts/`, `vendor/` | Caratteri (Big Shoulders, Hanken Grotesk) e libreria della mappa (MapLibre), inclusi nel pacchetto |
 
-Se modifichi i file dopo averla installata, cambia `sete-v2` in `sete-v3` in cima a `sw.js`,
+Se modifichi i file dopo averla installata, cambia `sete-v3` in `sete-v4` in cima a `sw.js`,
 così il telefono scarica la versione nuova.
 
 ## Dati e licenze

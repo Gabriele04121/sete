@@ -332,6 +332,8 @@
       scegli(migliore.properties.i);
     });
 
+    map.on('rotate', disegnaCono);
+
     let freno = 0;
     map.on('move', () => {
       const ora = Date.now();
@@ -634,14 +636,95 @@
     if (!segnoIo) {
       const el = document.createElement('div');
       el.className = 'io';
+      // Il cono mostra dove punta il telefono, come in Google Maps.
+      el.innerHTML = '<div class="cono" id="cono"><svg viewBox="-60 -60 120 120" aria-hidden="true">' +
+        '<defs><radialGradient id="cono-sfuma" cx="0" cy="0" r="58" gradientUnits="userSpaceOnUse">' +
+        '<stop offset="0.15" stop-color="#d9a93f" stop-opacity=".75"/>' +
+        '<stop offset="1" stop-color="#d9a93f" stop-opacity="0"/></radialGradient></defs>' +
+        '<path id="cono-spicchio" fill="url(#cono-sfuma)"/></svg></div>';
       segnoIo = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([io.lon, io.lat]).addTo(map);
+      disegnaCono();
     } else segnoIo.setLngLat([io.lon, io.lat]);
   }
+
+  // ---------- Direzione (bussola) ----------
+  let rotta = null;          // gradi da nord, già filtrati
+  let rottaGrezza = null;    // ultimo valore letto
+  let ampiezza = 50;         // apertura del cono in gradi: più larga se la bussola è incerta
+  let ultimaBussola = 0;
+  let giroCono = 0;
+
+  function angoloSchermo() {
+    if (screen.orientation && typeof screen.orientation.angle === 'number') return screen.orientation.angle;
+    return typeof window.orientation === 'number' ? window.orientation : 0;
+  }
+  function nuovaRotta(gradi, incertezza) {
+    if (gradi == null || isNaN(gradi)) return;
+    rottaGrezza = ((gradi % 360) + 360) % 360;
+    if (incertezza != null && incertezza >= 0) ampiezza = Math.min(110, Math.max(40, incertezza * 2));
+    if (!giroCono) giroCono = requestAnimationFrame(passoCono);
+  }
+  // Ammorbidisce i salti della bussola, passando sempre dalla parte più corta.
+  function passoCono() {
+    giroCono = 0;
+    if (rottaGrezza == null) return;
+    if (rotta == null) rotta = rottaGrezza;
+    else {
+      const diff = ((rottaGrezza - rotta + 540) % 360) - 180;
+      if (Math.abs(diff) < 0.3) rotta = rottaGrezza;
+      else { rotta = (rotta + diff * 0.25 + 360) % 360; giroCono = requestAnimationFrame(passoCono); }
+    }
+    disegnaCono();
+  }
+  function disegnaCono() {
+    const cono = document.getElementById('cono');
+    if (!cono) return;
+    if (rotta == null) { cono.classList.remove('vista'); return; }
+    const mezzo = ampiezza / 2 * RAD, r = 58;
+    const x = (r * Math.sin(mezzo)).toFixed(1), y = (-r * Math.cos(mezzo)).toFixed(1);
+    document.getElementById('cono-spicchio').setAttribute('d',
+      'M0 0L' + (-x) + ' ' + y + 'A' + r + ' ' + r + ' 0 0 1 ' + x + ' ' + y + 'Z');
+    const giro = rotta - (map ? map.getBearing() : 0);
+    cono.style.transform = 'rotate(' + giro.toFixed(1) + 'deg)';
+    cono.classList.add('vista');
+  }
+
+  function letturaBussola(e) {
+    let gradi = null, incertezza = null;
+    if (typeof e.webkitCompassHeading === 'number') {
+      // iPhone: già riferita al nord, va solo corretta per lo schermo ruotato.
+      gradi = e.webkitCompassHeading + angoloSchermo();
+      if (typeof e.webkitCompassAccuracy === 'number' && e.webkitCompassAccuracy >= 0) incertezza = e.webkitCompassAccuracy;
+    } else if ((e.absolute || e.type === 'deviceorientationabsolute') && typeof e.alpha === 'number') {
+      // Android: alpha cresce in senso antiorario, la rotta in senso orario.
+      gradi = 360 - e.alpha + angoloSchermo();
+    }
+    if (gradi == null) return;
+    ultimaBussola = Date.now();
+    nuovaRotta(gradi, incertezza);
+  }
+
+  // Si ascolta subito: dove serve un permesso (iPhone) le letture arrivano solo dopo averlo concesso.
+  if ('ondeviceorientationabsolute' in window) window.addEventListener('deviceorientationabsolute', letturaBussola);
+  else if ('DeviceOrientationEvent' in window) window.addEventListener('deviceorientation', letturaBussola);
+
+  // Sull'iPhone la bussola va chiesta dopo un tocco dell'utente.
+  let bussolaChiesta = false;
+  function chiediBussola() {
+    if (bussolaChiesta || ultimaBussola || !window.DeviceOrientationEvent) return;
+    const chiedi = window.DeviceOrientationEvent.requestPermission;
+    if (typeof chiedi !== 'function') return;
+    bussolaChiesta = true;
+    chiedi.call(window.DeviceOrientationEvent).catch(() => { bussolaChiesta = false; });
+  }
+  document.addEventListener('click', chiediBussola, { capture: true });
   function posizioneTrovata(pos) {
     const c = pos.coords;
     const mosso = !io || metri(io.lat, io.lon, c.latitude, c.longitude) > 4;
     io = { lat: c.latitude, lon: c.longitude };
     gpsNegato = false;
+    // Senza bussola, mentre cammini la direzione la dà il GPS.
+    if (Date.now() - ultimaBussola > 3000 && c.heading != null && !isNaN(c.heading) && c.speed > 0.7) nuovaRotta(c.heading, 25);
     $('btn-centra').classList.add('attivo');
     disegnaIo();
     if (!punti.length || !map || !mosso) return;
@@ -671,6 +754,7 @@
   $('btn-meno').addEventListener('click', () => map && map.zoomOut({ duration: 350 }));
   $('btn-centra').addEventListener('click', () => {
     if (!map) return;
+    chiediBussola();
     if (io && !ioLontano) { fissata = null; aggiorna(); inquadra(); }
     else if (io && ioLontano) map.flyTo({ center: ROMA, zoom: 15.4, duration: 1200 });
     else { primaVista = true; seguiPosizione(); }
