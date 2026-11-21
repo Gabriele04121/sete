@@ -23,6 +23,9 @@
   const CHIAVE_NASCOSTE = 'sete.nascoste';
   const SECONDI_ANNULLA = 7;     // quanto resta l'avviso con "Annulla"
   const GPS_INCERTO = 80;        // metri: oltre, avvisa che la posizione è approssimativa
+  // Navigazione dentro Sete: spenta, le indicazioni si aprono in Google Maps (o Mappe su iPhone).
+  // La versione guidata (vista inclinata, svolte, luoghi) è nel ramo "navigazione-guidata".
+  const NAVIGAZIONE_INTERNA = false;
   const SOGLIA_ARRIVO = 15;      // metri: sotto, sei arrivato
   const ZOOM_CAMMINO = 17.5;     // zoom della mappa mentre cammini con "Vai"
   const RAGGIO_LINK = 30;        // metri: tolleranza per ritrovare una fontanella da un link condiviso
@@ -795,6 +798,7 @@
   // Senza posizione GPS "Vai" non ha senso: resta solo il link al navigatore esterno.
   const ICONA_PASSO = '<circle cx="13" cy="4.2" r="2.2" fill="currentColor"/><path d="M13.5 8.5 10 10.2l-1.2 4M13.5 8.5l1.2 4.3 3 1.7M13.5 8.5l-1.3 6-3.2 5.5M12.2 14.5l3 2.5.8 4" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>';
   function aggiornaPulsantiVai(conPosizione) {
+    conPosizione = conPosizione && NAVIGAZIONE_INTERNA;
     $('btn-vai').hidden = !conPosizione;
     $('btn-vai').classList.toggle('fine', navigando);
     $('vai-testo').textContent = navigando ? 'Termina' : 'Vai';

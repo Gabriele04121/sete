@@ -628,6 +628,7 @@ button.vai { width: 100%; padding: 0 16px; border: 0; font-family: inherit; curs
 .vai.fine { background: var(--ghisa-su); color: var(--marmo); box-shadow: inset 0 0 0 1.5px var(--ghisa-filo); }
 .vai.fine:active { background: var(--ghisa-filo); }
 /* Il navigatore esterno resta a portata di mano, ma secondario. */
+.vai.esterno.secondario .esterno-icona { display: none; }
 .vai.esterno.secondario {
   min-height: 44px;
   margin-top: 6px;

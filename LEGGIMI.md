@@ -46,13 +46,9 @@ della mappa: basta spostarla.
 - Trascina la scheda verso l'alto (o tocca la maniglia) per leggere com'è fatta e vedere le altre vicine.
 - Trascinala verso il basso per ridurla a una barra sottile e liberare la mappa. La freccia nella barra punta verso
   la fontanella mentre giri il telefono: quando diventa azzurra ce l'hai davanti. Tocca la barra per riaprire la scheda.
-- "Vai" avvia la navigazione dentro Sete: la scheda si riduce alla barra compatta, la mappa tiene in vista te e il tratto
-  che resta, e la distanza scende in tempo reale; la freccia nella barra continua a indicare la fontanella. La destinazione
-  resta quella scelta anche se un'altra diventa più vicina. Se sposti la mappa a mano smette di seguirti: la freccia
-  in basso a destra si accende, toccala per tornare a seguirti. Arrivati (sotto i 15 m) compare "Sei arrivato" con una
-  vibrazione, e la navigazione finisce da sola; "Termina" (o la X nella barra) la chiude prima. Lo schermo resta acceso
-  finché navighi, dove il telefono lo permette. Serve la posizione GPS; senza, resta solo il link al navigatore.
-- Sotto "Vai", "Apri in Google Maps" (su iPhone "Apri in Mappe") passa le indicazioni al navigatore del telefono.
+- "Indicazioni a piedi" apre il percorso a piedi in Google Maps (su iPhone in Mappe).
+  Una navigazione dentro Sete, con vista inclinata, svolte e luoghi lungo la strada, è pronta nel ramo
+  `navigazione-guidata` ma per ora è spenta.
 - "Condividi" (nella scheda aperta) invia un link come `.../sete/?f=41.90060,12.47690`: chi lo apre
   trova la fontanella già scelta sulla mappa. Se il telefono non ha il foglio di condivisione, il link viene copiato
   ("Link copiato").
@@ -92,7 +88,7 @@ solo per le zone che hai già guardato.
 | `icons/` | Logo (`logo.svg`) e icone |
 | `fonts/`, `vendor/` | Caratteri (Big Shoulders, Hanken Grotesk) e libreria della mappa (MapLibre), inclusi nel pacchetto |
 
-Se modifichi i file dopo averla installata, cambia `sete-v10` in `sete-v11` in cima a `sw.js`,
+Se modifichi i file dopo averla installata, cambia `sete-v12` in `sete-v13` in cima a `sw.js`,
 così il telefono scarica la versione nuova.
 
 ## Fontanelle sempre aggiornate
