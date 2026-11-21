@@ -25,7 +25,6 @@
   const GPS_INCERTO = 80;        // metri: oltre, avvisa che la posizione è approssimativa
   const SOGLIA_ARRIVO = 15;      // metri: sotto, sei arrivato
   const ZOOM_CAMMINO = 17.5;     // zoom della mappa mentre cammini con "Vai"
-  const MARGINE_AVANTI = 90;     // pixel di margine in alto per vedere la strada davanti a te
   const RAGGIO_LINK = 30;        // metri: tolleranza per ritrovare una fontanella da un link condiviso
 
   const $ = (id) => document.getElementById(id);
@@ -359,9 +358,9 @@
 
   function margini() {
     const alto = $('filtri').getBoundingClientRect().bottom;
-    if (largo.matches) return { top: 20 + (navigando && seguendo ? MARGINE_AVANTI : 0), bottom: 20, left: 420, right: 20 };
+    if (largo.matches) return { top: 20, bottom: 20, left: 420, right: 20 };
     // mentre ti segue, la mappa ti tiene un po' più in basso per mostrarti la strada davanti
-    return { top: Math.round(alto) + (navigando && seguendo ? MARGINE_AVANTI : 0), bottom: Math.round(visibile()), left: 0, right: 0 };
+    return { top: Math.round(alto), bottom: Math.round(visibile()), left: 0, right: 0 };
   }
   let marginiInSospeso = false;
   let inquadrata = false;    // vero finché l'utente non sposta la mappa dopo un'inquadratura
@@ -832,14 +831,17 @@
   }
   document.addEventListener('visibilitychange', () => { if (navigando) tieniSchermoAcceso(); });
 
-  // La mappa si centra su di te, con zoom da camminata.
+  // La mappa tiene sempre in vista te e il tratto che resta fino alla fontanella:
+  // da lontano si vede tutto il percorso, avvicinandoti lo zoom cresce fino a quello da camminata.
   function seguiMappa(primo) {
     if (!map || !io || !navigando || !seguendo) return;
     inquadrata = false;
-    map.easeTo({
-      center: [io.lon, io.lat],
-      zoom: primo ? ZOOM_CAMMINO : map.getZoom(),
-      padding: margini(),
+    const b = new maplibregl.LngLatBounds([io.lon, io.lat], [io.lon, io.lat]);
+    (lineaVia() || []).forEach((c) => b.extend(c));
+    map.setPadding(margini());
+    map.fitBounds(b, {
+      padding: { top: 90, bottom: 60, left: 60, right: 76 },
+      maxZoom: ZOOM_CAMMINO,
       duration: primo ? 1000 : 800,
       essential: true
     });
