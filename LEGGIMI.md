@@ -54,8 +54,6 @@ della mappa: basta spostarla.
   Se il fascio è largo, la bussola è incerta: muovi il telefono disegnando un 8 per calibrarla.
 - Senza posizione, la "più vicina" è quella rispetto al centro della mappa: sposta la mappa per esplorare.
 - Il pulsante "i" mostra la legenda, quante fontanelle ci sono e permette di riscaricarle.
-- Di sera la mappa diventa scura da sola, dal tramonto all'alba. Nel pulsante "i" puoi sceglierla sempre chiara
-  o sempre scura.
 
 ## Offline
 
@@ -76,7 +74,7 @@ solo per le zone che hai già guardato.
 | `icons/` | Logo (`logo.svg`) e icone |
 | `fonts/`, `vendor/` | Caratteri (Big Shoulders, Hanken Grotesk) e libreria della mappa (MapLibre), inclusi nel pacchetto |
 
-Se modifichi i file dopo averla installata, cambia `sete-v7` in `sete-v8` in cima a `sw.js`,
+Se modifichi i file dopo averla installata, cambia `sete-v8` in `sete-v9` in cima a `sw.js`,
 così il telefono scarica la versione nuova.
 
 ## Fontanelle sempre aggiornate
@@ -93,7 +91,7 @@ dalla scheda Actions del repository: "Aggiorna le fontanelle", poi "Run workflow
   alla mappa classica di OpenStreetMap.
 - Indirizzi: Nominatim (OpenStreetMap), adatto a un uso leggero e personale.
 - Percorsi a piedi: server OSRM di FOSSGIS (routing.openstreetmap.de), lo stesso di openstreetmap.org,
-  per un uso leggero. Mappa scura: stile Dark di OpenFreeMap.
+  per un uso leggero.
 - MapLibre GL JS: licenza BSD. Caratteri: SIL Open Font License.
 
 I dati sono curati da volontari: una fontanella può essere chiusa, spostata o mancare, e molti nasoni

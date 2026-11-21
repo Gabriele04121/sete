@@ -7,7 +7,6 @@
   const ROMA = [12.4829, 41.8933];                 // longitudine, latitudine
   const RIQUADRO = '41.65,12.23,42.10,12.86';      // sud, ovest, nord, est
   const STILE_MAPPA = 'https://tiles.openfreemap.org/styles/liberty';
-  const STILE_NOTTE = 'https://tiles.openfreemap.org/styles/dark';
   const SERVER_PERCORSI = 'https://routing.openstreetmap.de/routed-foot/route/v1/driving/';
   const PACCHETTO = 'fontanelle.json';   // copia delle fontanelle pubblicata insieme all'app
   const SERVER_OVERPASS = [
@@ -21,7 +20,6 @@
   const MAX_SEGNI = 150;
   const CHIAVE = 'sete.fontanelle.v2';
   const CHIAVE_FILTRO = 'sete.filtro';
-  const CHIAVE_TEMA = 'sete.tema';
   const GPS_INCERTO = 80;        // metri: oltre, avvisa che la posizione è approssimativa
 
   const $ = (id) => document.getElementById(id);
@@ -258,82 +256,22 @@
     ]
   };
 
-  // ---------- Mappa chiara di giorno, scura di sera ----------
-  let notte = false;
-  let temaScelto = 'auto';   // auto, chiaro o scuro
-  try { temaScelto = localStorage.getItem(CHIAVE_TEMA) || 'auto'; } catch (e) { /* niente */ }
-
-  // Alba e tramonto del giorno (formula astronomica semplificata, precisa a pochi minuti).
-  function sole(quandoMs, lat, lon) {
-    const J = quandoMs / 864e5 + 2440587.5;
-    const n = Math.round(J - 2451545 + 0.0008);
-    const Js = n - lon / 360;
-    const M = (357.5291 + 0.98560028 * Js) % 360;
-    const C = 1.9148 * Math.sin(M * RAD) + 0.02 * Math.sin(2 * M * RAD) + 0.0003 * Math.sin(3 * M * RAD);
-    const L = (M + C + 180 + 102.9372) % 360;
-    const Jt = 2451545 + Js + 0.0053 * Math.sin(M * RAD) - 0.0069 * Math.sin(2 * L * RAD);
-    const decl = Math.asin(Math.sin(L * RAD) * Math.sin(23.4397 * RAD));
-    const cosW = (Math.sin(-0.833 * RAD) - Math.sin(lat * RAD) * Math.sin(decl)) / (Math.cos(lat * RAD) * Math.cos(decl));
-    const W = Math.acos(Math.max(-1, Math.min(1, cosW))) / RAD;
-    const ms = (g) => (g - 2440587.5) * 864e5;
-    return { alba: ms(Jt - W / 360), tramonto: ms(Jt + W / 360) };
-  }
-  function eNotte() {
-    if (temaScelto === 'scuro') return true;
-    if (temaScelto === 'chiaro') return false;
-    const ora = Date.now(), lat = io ? io.lat : ROMA[1], lon = io ? io.lon : ROMA[0];
-    const s = sole(ora, lat, lon), crepuscolo = 25 * 60e3;
-    return ora < s.alba - crepuscolo || ora > s.tramonto + crepuscolo;
-  }
-
-  const stiliLetti = {};
-  async function stileMappa(scuro) {
-    const url = scuro ? STILE_NOTTE : STILE_MAPPA;
+  async function stileMappa() {
     try {
-      if (!stiliLetti[url]) {
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 9000);
-        const r = await fetch(url, { signal: ctrl.signal });
-        clearTimeout(timer);
-        if (!r.ok) throw new Error('stile');
-        stiliLetti[url] = await r.json();
-      }
-      const stile = JSON.parse(JSON.stringify(stiliLetti[url]));
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 9000);
+      const r = await fetch(STILE_MAPPA, { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (!r.ok) throw new Error('stile');
+      const stile = await r.json();
       // Via i simboli dei negozi e gli edifici in 3D: sulla mappa devono risaltare le fontanelle.
       const nascosti = ['poi_r20', 'poi_r7', 'poi_r1', 'building-3d'];
       stile.layers = stile.layers.filter((l) => nascosti.indexOf(l.id) === -1);
       return stile;
     } catch (e) {
-      // se la mappa vettoriale non risponde si usa quella classica di OpenStreetMap, scurita di sera
-      const raster = JSON.parse(JSON.stringify(RASTER));
-      if (scuro) {
-        raster.layers[0].paint['background-color'] = '#1b2321';
-        raster.layers[1].paint = { 'raster-brightness-max': 0.55, 'raster-saturation': -0.5, 'raster-contrast': 0.1 };
-      }
-      return raster;
+      return RASTER; // se la mappa vettoriale non risponde si usa quella classica di OpenStreetMap
     }
   }
-
-  function segnaTema() {
-    document.documentElement.classList.toggle('notte', notte);
-    document.querySelectorAll('.tema button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tema === temaScelto)));
-  }
-  let giroTema = 0;
-  async function controllaTema() {
-    const n = eNotte();
-    if (n === notte) return;
-    notte = n;
-    segnaTema();
-    if (!map) return;
-    const mio = ++giroTema;
-    const stile = await stileMappa(n);
-    if (mio !== giroTema) return;
-    mappaPronta = false;
-    map.setStyle(stile, { diff: false });
-    map.once('style.load', aggiungiStrati);
-  }
-  setInterval(controllaTema, 5 * 60e3);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) controllaTema(); });
 
   function margini() {
     const alto = $('filtri').getBoundingClientRect().bottom;
@@ -359,9 +297,7 @@
   }
 
   async function creaMappa() {
-    notte = eNotte();
-    segnaTema();
-    const style = await stileMappa(notte);
+    const style = await stileMappa();
     map = new maplibregl.Map({
       container: 'map',
       style: style,
@@ -418,27 +354,26 @@
     });
   }
 
-  // Linea del percorso e punti delle fontanelle, ridisegnati anche quando cambia lo stile.
+  // Linea del percorso e punti delle fontanelle.
   function aggiungiStrati() {
-    if (map.getSource('fontanelle')) return;
     map.addSource('via', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     map.addLayer({
       id: 'via-bordo', type: 'line', source: 'via',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': notte ? '#121917' : '#ffffff', 'line-width': 8, 'line-opacity': 0.85 }
+      paint: { 'line-color': '#ffffff', 'line-width': 8, 'line-opacity': 0.85 }
     });
     map.addLayer({
       id: 'via', type: 'line', source: 'via',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': notte ? '#f1f3f0' : '#1f2927', 'line-width': 4.5, 'line-dasharray': [0.01, 2] }
+      paint: { 'line-color': '#1f2927', 'line-width': 4.5, 'line-dasharray': [0.01, 2] }
     });
     map.addSource('fontanelle', { type: 'geojson', data: geojson() });
     map.addLayer({
       id: 'punti', type: 'circle', source: 'fontanelle',
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 1.3, 12, 2.8, 14, 5, 15, 6.5],
-        'circle-color': ['match', ['get', 't'], 'n', notte ? '#dfe6e3' : '#1f2927', 'm', '#c9972c', notte ? '#35b3e6' : '#0b84b5'],
-        'circle-stroke-color': notte ? '#121917' : '#ffffff',
+        'circle-color': ['match', ['get', 't'], 'n', '#1f2927', 'm', '#c9972c', '#0b84b5'],
+        'circle-stroke-color': '#ffffff',
         'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 9, 0.3, 12, 0.9, 14, 1.8],
         'circle-opacity': ['interpolate', ['linear'], ['zoom'], ZOOM_SEGNI - 0.3, 1, ZOOM_SEGNI + 0.2, 0],
         'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], ZOOM_SEGNI - 0.3, 1, ZOOM_SEGNI + 0.2, 0]
@@ -1051,13 +986,6 @@
     if (bussolaChiesta) return 'Bussola: nessuna lettura. Controlla che il browser abbia il permesso per movimento e orientamento.';
     return 'Bussola: nessuna lettura dal telefono.';
   }
-  document.querySelectorAll('.tema button').forEach((b) => b.addEventListener('click', () => {
-    temaScelto = b.dataset.tema;
-    try { localStorage.setItem(CHIAVE_TEMA, temaScelto); } catch (e) { /* niente */ }
-    segnaTema();
-    controllaTema();
-  }));
-
   $('btn-info').addEventListener('click', () => {
     $('info-dati').textContent = testoDati();
     $('info-bussola').textContent = testoBussola();
