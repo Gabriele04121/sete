@@ -38,8 +38,11 @@ della mappa: basta spostarla.
 
 - La scheda scura in basso mostra la fontanella più vicina, la distanza, i minuti a piedi e il tipo.
 - Trascina la scheda verso l'alto (o tocca la maniglia) per leggere com'è fatta e vedere le altre vicine.
+- Trascinala verso il basso per ridurla a una barra sottile e liberare la mappa. La freccia nella barra punta verso
+  la fontanella mentre giri il telefono: quando diventa azzurra ce l'hai davanti. Tocca la barra per riaprire la scheda.
 - "Indicazioni a piedi" apre il navigatore del telefono.
 - I tre filtri in alto mostrano solo nasoni, fontanelle o fontane. Tocca di nuovo il filtro per rivederle tutte.
+  L'app ricorda il filtro alla prossima apertura.
 - La mappa si ingrandisce con due dita, con il doppio tocco o con i pulsanti + e −.
   Da lontano le fontanelle sono punti colorati, da vicino diventano segni animati, diversi per tipo.
 - La freccia a destra riporta la mappa su di te.
@@ -66,7 +69,7 @@ solo per le zone che hai già guardato.
 | `icons/` | Logo (`logo.svg`) e icone |
 | `fonts/`, `vendor/` | Caratteri (Big Shoulders, Hanken Grotesk) e libreria della mappa (MapLibre), inclusi nel pacchetto |
 
-Se modifichi i file dopo averla installata, cambia `sete-v5` in `sete-v6` in cima a `sw.js`,
+Se modifichi i file dopo averla installata, cambia `sete-v6` in `sete-v7` in cima a `sw.js`,
 così il telefono scarica la versione nuova.
 
 ## Dati e licenze

@@ -346,6 +346,9 @@ button { font: inherit; color: inherit; }
 
 /* ---------- Scheda ---------- */
 
+/* 0 = scheda media, 1 = ridotta alla barra compatta. Registrata per poterla animare. */
+@property --ridu { syntax: "<number>"; inherits: true; initial-value: 0; }
+
 .scheda {
   position: fixed;
   z-index: 10;
@@ -359,10 +362,85 @@ button { font: inherit; color: inherit; }
   background: var(--ghisa);
   box-shadow: 0 -6px 30px rgb(20 28 26 / 0.3);
   transform: translateY(var(--giu, 0px));
-  transition: transform 0.5s var(--molla);
+  transition: transform 0.5s var(--molla), --ridu 0.35s ease;
   will-change: transform;
 }
 .scheda.trascina { transition: none; }
+
+/* Barra compatta: si vede quando abbassi la scheda fino in fondo. */
+.compatta {
+  position: absolute;
+  z-index: 2;
+  top: 26px;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px calc(env(safe-area-inset-bottom, 0px) + 14px) 16px;
+  opacity: var(--ridu);
+  transform: translateY(calc((1 - var(--ridu)) * 10px));
+  cursor: pointer;
+  touch-action: none;
+}
+.compatta[inert] { pointer-events: none; }
+.cima { opacity: calc(1 - var(--ridu) * 1.4); }
+.freccia {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--ghisa-su);
+  color: var(--ottone);
+  box-shadow: inset 0 0 0 1.5px var(--ghisa-filo);
+  transition: background 0.3s, color 0.3s, box-shadow 0.3s;
+}
+.freccia svg {
+  width: 24px;
+  height: 24px;
+  transform: rotate(var(--punta, 0deg));
+  transition: transform 0.25s linear;
+}
+.freccia.davanti {
+  background: var(--acqua);
+  color: #fff;
+  box-shadow: 0 0 0 5px rgb(53 179 230 / 0.25);
+}
+.compatta-dist {
+  flex: 0 0 auto;
+  font-family: var(--cifre);
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.compatta-dist .unita { margin-left: 3px; font-size: 19px; font-weight: 600; color: var(--ottone); }
+.compatta-testo { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; }
+.compatta-testo strong,
+.compatta-testo small {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.compatta-testo strong { font-size: 15px; font-weight: 650; }
+.compatta-testo small { font-size: 13.5px; color: var(--tenue); }
+.compatta-testo small.davanti { color: var(--acqua); font-weight: 650; }
+.compatta-vai {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 50px;
+  height: 50px;
+  border-radius: 16px;
+  background: var(--ottone);
+  color: #1a2220;
+  transition: transform 0.18s var(--rimbalzo), background 0.2s;
+}
+.compatta-vai svg { width: 24px; height: 24px; }
+.compatta-vai:active { transform: scale(0.94); background: var(--ottone-giu); }
 .scheda.nascosta { transform: translateY(105%); }
 
 .maniglia {
@@ -684,6 +762,8 @@ dialog::backdrop { background: rgb(15 21 20 / 0.55); animation: velo 0.3s ease; 
   }
   .scheda.nascosta { transform: translateY(120%); }
   .maniglia { visibility: hidden; height: 20px; }
+  .compatta { display: none; }
+  .cima { opacity: 1; }
   .cima { padding-bottom: 20px; touch-action: auto; }
   .alto { right: auto; width: 420px; }
   .alto-riga { padding-left: 20px; }

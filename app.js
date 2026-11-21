@@ -17,6 +17,8 @@
   const ZOOM_SEGNI = 15;         // da qui in su i punti diventano segni animati
   const MAX_SEGNI = 150;
   const CHIAVE = 'sete.fontanelle.v2';
+  const CHIAVE_FILTRO = 'sete.filtro';
+  const GPS_INCERTO = 80;        // metri: oltre, avvisa che la posizione è approssimativa
 
   const $ = (id) => document.getElementById(id);
   const largo = window.matchMedia('(min-width: 900px)');
@@ -113,6 +115,7 @@
   let primaVista = true;
   let mappaPronta = false;
   let aperta = false;
+  let stato = 'media';       // posizione della scheda: mini, media o aperta
   let peek = 0;
   let map = null;
   let segnoIo = null, segnoScelto = null, sceltoIndice = null;
@@ -126,11 +129,14 @@
     const y = (bLat - aLat) * RAD;
     return Math.sqrt(x * x + y * y) * 6371000;
   }
-  function verso(aLat, aLon, bLat, bLon) {
+  function gradiVerso(aLat, aLon, bLat, bLon) {
     const y = Math.sin((bLon - aLon) * RAD) * Math.cos(bLat * RAD);
     const x = Math.cos(aLat * RAD) * Math.sin(bLat * RAD) -
       Math.sin(aLat * RAD) * Math.cos(bLat * RAD) * Math.cos((bLon - aLon) * RAD);
-    const gradi = (Math.atan2(y, x) / RAD + 360) % 360;
+    return (Math.atan2(y, x) / RAD + 360) % 360;
+  }
+  function verso(aLat, aLon, bLat, bLon) {
+    const gradi = gradiVerso(aLat, aLon, bLat, bLon);
     return ['nord', 'nord-est', 'est', 'sud-est', 'sud', 'sud-ovest', 'ovest', 'nord-ovest'][Math.round(gradi / 45) % 8];
   }
   function distanza(d) {
@@ -249,13 +255,13 @@
   function margini() {
     const alto = $('filtri').getBoundingClientRect().bottom;
     if (largo.matches) return { top: 20, bottom: 20, left: 420, right: 20 };
-    return { top: Math.round(alto), bottom: Math.round(peek), left: 0, right: 0 };
+    return { top: Math.round(alto), bottom: Math.round(visibile()), left: 0, right: 0 };
   }
   let marginiInSospeso = false;
   function applicaMargini() {
     const m = margini();
     document.documentElement.style.setProperty('--alto', m.top + 'px');
-    document.documentElement.style.setProperty('--peek', (largo.matches ? 0 : peek) + 'px');
+    document.documentElement.style.setProperty('--peek', (largo.matches ? 0 : visibile()) + 'px');
     if (!map) return;
     // Mai interrompere un movimento della mappa già in corso: si rimanda alla fine.
     if (map.isMoving()) { marginiInSospeso = true; return; }
@@ -452,6 +458,7 @@
 
   function scegli(i) {
     fissata = i;
+    if (stato === 'mini') imposta('media');
     mostra();
     inquadra();
   }
@@ -485,8 +492,9 @@
     $('scheda').classList.remove('nascosta');
     $('mirino').hidden = r.mio;
 
-    $('contesto').textContent = fissata != null
-      ? 'Hai scelto'
+    const arrivato = r.mio && d < 15;
+    $('contesto').textContent = arrivato ? 'Ci sei, è qui accanto'
+      : fissata != null ? 'Hai scelto'
       : (r.mio ? 'La più vicina a te' : 'La più vicina al centro');
     $('btn-sblocca').hidden = fissata == null;
 
@@ -504,12 +512,21 @@
     let nota = '';
     if (io && ioLontano) nota = 'Sei lontano da Roma. Sposta la mappa per esplorare una zona.';
     else if (gpsNegato) nota = 'Posizione non attiva. Sposta la mappa, oppure tocca la freccia a destra per riprovare.';
+    else if (r.mio && io.acc > GPS_INCERTO) nota = 'Posizione approssimativa (circa ' + Math.round(io.acc / 10) * 10 + ' m): la più vicina potrebbe essere un\u2019altra. All\u2019aperto il GPS diventa più preciso.';
     $('nota').textContent = nota;
     $('nota').hidden = !nota;
 
-    $('btn-vai').href = suApple
+    $('btn-vai').href = $('mini-vai').href = suApple
       ? 'https://maps.apple.com/?daddr=' + p[0] + ',' + p[1] + '&dirflg=w'
       : 'https://www.google.com/maps/dir/?api=1&destination=' + p[0] + ',' + p[1] + '&travelmode=walking';
+
+    // Barra compatta
+    $('mini-num').textContent = cifre(dist.v);
+    $('mini-unita').textContent = dist.u;
+    $('mini-titolo').textContent = $('titolo').textContent;
+    miniTesto = arrivato ? 'Ci sei' : minuti(d);
+    rottaVerso = gradiVerso(r.lat, r.lon, p[0], p[1]);
+    aggiornaFreccia();
 
     ultimaMostrata = i;
     segnaScelto(i);
@@ -552,22 +569,66 @@
 
   function aggiorna() { calcola(); mostra(); }
 
-  // ---------- Scheda trascinabile ----------
+  // ---------- Freccia della barra compatta ----------
+  // Punta verso la fontanella: con la bussola ruota mentre giri il telefono,
+  // senza bussola è riferita alla mappa (nord in alto).
+  let rottaVerso = null, miniTesto = '', puntaAttuale = 0;
+  function aggiornaFreccia() {
+    if (rottaVerso == null) return;
+    const conBussola = rotta != null;
+    const verso = rottaVerso - (conBussola ? rotta : (map ? map.getBearing() : 0));
+    // Si gira sempre dalla parte più corta, senza fare il giro completo a 0/360.
+    const diff = ((verso - puntaAttuale) % 360 + 540) % 360 - 180;
+    puntaAttuale += diff;
+    $('freccia').style.setProperty('--punta', puntaAttuale.toFixed(1) + 'deg');
+    const scarto = Math.abs(((verso % 360) + 540) % 360 - 180);
+    const davanti = conBussola && riferimento().mio && scarto < 20 && miniTesto !== 'Ci sei';
+    $('freccia').classList.toggle('davanti', davanti);
+    const testo = davanti ? 'Dritta davanti a te' : miniTesto;
+    const el = $('mini-dettaglio');
+    if (el.textContent !== testo) el.textContent = testo;
+    el.classList.toggle('davanti', davanti);
+  }
+
+  // ---------- Scheda trascinabile: tre posizioni ----------
+  // mini: solo la barra compatta; media: distanza e pulsante; aperta: tutti i dettagli.
   function nascosto() { return largo.matches ? 0 : Math.max(0, $('scheda').offsetHeight - peek); }
+  function altezzaMini() { return $('compatta').offsetTop + $('compatta').offsetHeight; }
+  function giuMini() { return Math.max(nascosto(), $('scheda').offsetHeight - altezzaMini()); }
+  function giuDi(st) {
+    if (largo.matches || st === 'aperta') return 0;
+    return st === 'mini' ? giuMini() : nascosto();
+  }
+  function visibile() { return stato === 'mini' && !largo.matches ? altezzaMini() : peek; }
+
   function misuraScheda() {
     const nuovo = $('cima').offsetTop + $('cima').offsetHeight;
     const cambiato = Math.abs(nuovo - peek) > 1;
     peek = nuovo;
-    $('scheda').style.setProperty('--giu', (aperta ? 0 : nascosto()) + 'px');
+    $('scheda').style.setProperty('--giu', giuDi(stato) + 'px');
     if (cambiato) applicaMargini();
   }
-  function apri(si) {
-    aperta = si;
-    $('scheda').classList.toggle('aperta', si);
-    $('maniglia').setAttribute('aria-expanded', String(si));
-    $('scheda').style.setProperty('--giu', (si ? 0 : nascosto()) + 'px');
-    if (!si) $('resto').scrollTop = 0;
+  function imposta(st, conVibrazione) {
+    if (largo.matches) st = st === 'mini' ? 'media' : st;
+    const prima = stato;
+    stato = st;
+    aperta = st === 'aperta';
+    const scheda = $('scheda');
+    scheda.classList.toggle('aperta', aperta);
+    scheda.classList.toggle('ridotta', st === 'mini');
+    scheda.style.setProperty('--giu', giuDi(st) + 'px');
+    scheda.style.setProperty('--ridu', st === 'mini' ? '1' : '0');
+    $('compatta').inert = st !== 'mini';
+    $('cima').inert = st === 'mini';
+    $('maniglia').setAttribute('aria-expanded', String(aperta));
+    $('maniglia').setAttribute('aria-label', st === 'mini' ? 'Mostra la fontanella' : 'Apri o chiudi i dettagli');
+    if (!aperta) $('resto').scrollTop = 0;
+    if (prima !== st) {
+      applicaMargini();
+      if (conVibrazione && navigator.vibrate) { try { navigator.vibrate(8); } catch (e) { /* niente */ } }
+    }
   }
+  function apri(si) { imposta(si ? 'aperta' : 'media'); }
 
   (function trascinamento() {
     const scheda = $('scheda');
@@ -576,19 +637,22 @@
       if (largo.matches || (e.target.closest && e.target.closest('a'))) return;
       attivo = true; mosso = false;
       y0 = yUltimo = e.clientY; tUltimo = e.timeStamp; vel = 0;
-      base = aperta ? 0 : nascosto();
+      base = attuale = giuDi(stato);
     }
     function muovi(e) {
       if (!attivo) return;
       const dy = e.clientY - y0;
       if (!mosso && Math.abs(dy) < 6) return;
       if (!mosso) { mosso = true; scheda.classList.add('trascina'); }
-      const max = nascosto();
-      attuale = Math.min(max + 30, Math.max(-20, base + dy));
+      const max = giuMini(), media = nascosto();
+      attuale = base + dy;
       // oltre i limiti la scheda oppone resistenza
       if (attuale < 0) attuale = attuale / 3;
       if (attuale > max) attuale = max + (attuale - max) / 3;
       scheda.style.setProperty('--giu', attuale + 'px');
+      // la barra compatta compare mentre la scheda scende sotto la posizione media
+      const ridu = max > media ? Math.min(1, Math.max(0, (attuale - media) / (max - media))) : 0;
+      scheda.style.setProperty('--ridu', ridu.toFixed(3));
       const dt = e.timeStamp - tUltimo;
       if (dt > 0) vel = (e.clientY - yUltimo) / dt;
       tUltimo = e.timeStamp; yUltimo = e.clientY;
@@ -599,18 +663,26 @@
       attivo = false;
       if (!mosso) return;
       scheda.classList.remove('trascina');
-      const max = nascosto();
-      apri(Math.abs(vel) > 0.35 ? vel < 0 : attuale < max / 2);
+      const tappe = [['aperta', 0], ['media', nascosto()], ['mini', giuMini()]];
+      let scelta;
+      if (Math.abs(vel) > 0.35) {
+        // un colpo veloce porta alla tappa successiva nella direzione del gesto
+        const avanti = tappe.filter((t) => (vel > 0 ? t[1] > attuale + 4 : t[1] < attuale - 4));
+        scelta = avanti.length ? (vel > 0 ? avanti[0] : avanti[avanti.length - 1]) : null;
+      }
+      if (!scelta) scelta = tappe.reduce((m, t) => (Math.abs(t[1] - attuale) < Math.abs(m[1] - attuale) ? t : m));
+      imposta(scelta[0], true);
       // il clic che segue un trascinamento non deve attivare nulla
       const blocca = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
       window.addEventListener('click', blocca, { capture: true, once: true });
       setTimeout(() => window.removeEventListener('click', blocca, true), 60);
     }
-    [$('maniglia'), $('cima')].forEach((z) => z.addEventListener('pointerdown', giu));
+    [$('maniglia'), $('cima'), $('compatta')].forEach((z) => z.addEventListener('pointerdown', giu));
     window.addEventListener('pointermove', muovi, { passive: false });
     window.addEventListener('pointerup', su);
     window.addEventListener('pointercancel', su);
-    $('maniglia').addEventListener('click', () => apri(!aperta));
+    $('maniglia').addEventListener('click', () => imposta(stato === 'media' ? 'aperta' : 'media'));
+    $('compatta').addEventListener('click', (e) => { if (!e.target.closest('a')) imposta('media'); });
   })();
 
   if ('ResizeObserver' in window) new ResizeObserver(misuraScheda).observe($('cima'));
@@ -695,6 +767,7 @@
     const giro = rotta - (map ? map.getBearing() : 0);
     cono.style.transform = 'rotate(' + giro.toFixed(1) + 'deg)';
     cono.classList.add('vista');
+    aggiornaFreccia();
   }
 
   function letturaBussola(e) {
@@ -728,8 +801,9 @@
   document.addEventListener('click', chiediBussola, { capture: true });
   function posizioneTrovata(pos) {
     const c = pos.coords;
-    const mosso = !io || metri(io.lat, io.lon, c.latitude, c.longitude) > 4;
-    io = { lat: c.latitude, lon: c.longitude };
+    const incerto = (a) => a > GPS_INCERTO;
+    const mosso = !io || metri(io.lat, io.lon, c.latitude, c.longitude) > 4 || incerto(io.acc) !== incerto(c.accuracy);
+    io = { lat: c.latitude, lon: c.longitude, acc: c.accuracy || 0 };
     gpsNegato = false;
     // Senza bussola, mentre cammini la direzione la dà il GPS.
     if (Date.now() - ultimaBussola > 3000 && c.heading != null && !isNaN(c.heading) && c.speed > 0.7) nuovaRotta(c.heading, 25);
@@ -769,16 +843,26 @@
   });
   $('btn-sblocca').addEventListener('click', () => { fissata = null; aggiorna(); inquadra(); });
 
-  $('filtri').addEventListener('click', (e) => {
-    const b = e.target.closest('.filtro');
-    if (!b || !punti.length) return;
-    // Toccare di nuovo il filtro attivo torna a mostrarle tutte.
-    filtro = filtro === b.dataset.t ? 't' : b.dataset.t;
+  function segnaFiltri() {
     document.querySelectorAll('.filtro').forEach((f) => {
       const attivo = f.dataset.t === filtro;
       f.classList.toggle('attivo', attivo);
       f.setAttribute('aria-pressed', String(attivo));
     });
+  }
+  // L'ultimo filtro scelto resta attivo alla prossima apertura.
+  try {
+    const salvato = localStorage.getItem(CHIAVE_FILTRO);
+    if (salvato === 'n' || salvato === 'f' || salvato === 'm') { filtro = salvato; segnaFiltri(); }
+  } catch (err) { /* niente */ }
+
+  $('filtri').addEventListener('click', (e) => {
+    const b = e.target.closest('.filtro');
+    if (!b || !punti.length) return;
+    // Toccare di nuovo il filtro attivo torna a mostrarle tutte.
+    filtro = filtro === b.dataset.t ? 't' : b.dataset.t;
+    try { localStorage.setItem(CHIAVE_FILTRO, filtro); } catch (err) { /* niente */ }
+    segnaFiltri();
     if (fissata != null && !passa(fissata)) fissata = null;
     ridisegnaPunti();
     aggiorna();
