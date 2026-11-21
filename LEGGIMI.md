@@ -40,6 +40,9 @@ della mappa: basta spostarla.
   Distanza e "più vicina" sono calcolate sul percorso a piedi vero, non in linea d'aria: una fontanella
   oltre un raccordo o un fiume non viene più indicata come vicina. La linea tratteggiata segue le strade.
   Se il servizio dei percorsi non risponde, la scheda lo dice ("in linea d'aria").
+- Sotto il nome compaiono, quando OpenStreetMap li conosce, piccoli segni: Borraccia (si riempie bene), Cani
+  (c'è una ciotola), Carrozzina (accessibile; "Non in carrozzina" se non lo è), Stagionale (può essere chiusa
+  in certi periodi o avere degli orari). Se non c'è nulla, non compare niente.
 - Trascina la scheda verso l'alto (o tocca la maniglia) per leggere com'è fatta e vedere le altre vicine.
 - Trascinala verso il basso per ridurla a una barra sottile e liberare la mappa. La freccia nella barra punta verso
   la fontanella mentre giri il telefono: quando diventa azzurra ce l'hai davanti. Tocca la barra per riaprire la scheda.
@@ -83,13 +86,23 @@ La GitHub Action `.github/workflows/fontanelle.yml` scarica ogni lunedì le font
 `strumenti/fontanelle.mjs` e aggiorna `fontanelle.json`, solo se qualcosa è cambiato. Puoi farla partire a mano
 dalla scheda Actions del repository: "Aggiorna le fontanelle", poi "Run workflow".
 
+Lo script calcola anche la strada di ogni fontanella: scarica da Overpass le strade, le piazze e le aree pedonali
+con nome e assegna a ogni punto quella più vicina, entro 60 metri (altrimenti niente). Così l'indirizzo è già nel
+file, l'app lo mostra anche offline e non manda la tua posizione a nessun servizio. Se le strade non si scaricano,
+si tengono quelle del giro precedente. Ogni punto è `[lat, lon, tipo, nome, strada, extra]`; `extra` è una stringa
+di lettere: `b` borraccia, `c` cani, `r` carrozzina sì, `x` carrozzina no, `s` stagionale o con orari.
+Per provare lo script senza rete: `SETE_PROVA=risposte.json SETE_USCITA=/percorso/uscita.json node strumenti/fontanelle.mjs`.
+
 ## Dati e licenze
 
 - Fontanelle: © collaboratori di OpenStreetMap, licenza ODbL. Sono gli elementi `amenity=drinking_water`
   (nasoni se hanno `fountain=nasone`, altrimenti fontanelle) e le fontane `amenity=fountain` con `drinking_water=yes`.
+  Dai tag si leggono anche `bottle`, `dog`, `wheelchair`, `seasonal` e `opening_hours`. Le strade con nome
+  (`highway`, `place=square`, `leisure=pedestrian`) sono sempre di OpenStreetMap, ODbL.
 - Mappa: stile Liberty servito da OpenFreeMap, gratuito e senza chiave. Se non risponde, l'app passa da sola
   alla mappa classica di OpenStreetMap.
-- Indirizzi: Nominatim (OpenStreetMap), adatto a un uso leggero e personale.
+- Indirizzi: già calcolati nel file delle fontanelle; Nominatim (OpenStreetMap) solo per i punti che non ce l'hanno,
+  adatto a un uso leggero e personale.
 - Percorsi a piedi: server OSRM di FOSSGIS (routing.openstreetmap.de), lo stesso di openstreetmap.org,
   per un uso leggero.
 - MapLibre GL JS: licenza BSD. Caratteri: SIL Open Font License.

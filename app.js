@@ -105,7 +105,7 @@
     '</strong><span>' + TIPI[t].breve + '</span></div></li>').join('');
 
   // ---------- Stato ----------
-  let punti = [];            // [lat, lon, tipo, nome]
+  let punti = [];            // [lat, lon, tipo, nome, strada, extra]; i dati vecchi hanno solo i primi 4
   let quando = 0;
   let filtro = 't';          // t = tutte, oppure n / f / m
   let io = null;             // {lat, lon}
@@ -122,7 +122,7 @@
   let map = null;
   let segnoIo = null, segnoScelto = null, sceltoIndice = null;
   const segni = new Map();   // indice -> Marker
-  const strade = new Map();  // indice -> nome della strada
+  const strade = new Map();  // indice -> nome della strada trovata da Nominatim (ripiego)
 
   // ---------- Misure ----------
   const RAD = Math.PI / 180;
@@ -212,7 +212,13 @@
           let tipo = 'f';
           if (t.amenity === 'fountain') tipo = 'm';
           else if (t.fountain === 'nasone' || /nasone/i.test(t['drinking_water:type'] || '')) tipo = 'n';
-          nuovi.push([+lat.toFixed(5), +lon.toFixed(5), tipo, t.name || '']);
+          let extra = '';
+          if (t.bottle === 'yes') extra += 'b';
+          if (t.dog === 'yes') extra += 'c';
+          if (t.wheelchair === 'yes') extra += 'r';
+          else if (t.wheelchair === 'no') extra += 'x';
+          if ((t.seasonal && t.seasonal !== 'no') || t.opening_hours) extra += 's';
+          nuovi.push([+lat.toFixed(5), +lon.toFixed(5), tipo, t.name || '', '', extra]);
         }
         if (nuovi.length < 50) throw new Error('risposta troppo corta');
         punti = nuovi;
@@ -225,10 +231,12 @@
   }
 
   // ---------- Indirizzi ----------
+  // La strada arriva già pronta dal dato (p[4]); Nominatim resta solo per i punti che non ce l'hanno.
+  const stradaDi = (i) => punti[i][4] || strade.get(i) || '';
   let attesaStrada = null;
   function cercaStrada(i) {
     clearTimeout(attesaStrada);
-    if (strade.has(i) || !navigator.onLine) return;
+    if (punti[i][4] || strade.has(i) || !navigator.onLine) return;
     attesaStrada = setTimeout(async () => {
       try {
         const p = punti[i];
@@ -567,7 +575,39 @@
     })(inizio);
   }
 
-  let ultimoValore = 0, ultimaUnita = 'm', ultimoTipo = null;
+  let ultimoValore = 0, ultimaUnita = 'm', ultimoTipo = null, ultimiServizi = null;
+  // Piccoli chip con ciò che offre la fontanella: borraccia, cani, carrozzina, stagionale.
+  const SERVIZI = [
+    ['b', 'Borraccia', 'si riempie bene una borraccia',
+      '<path d="M9.5 3h5v2.2l-.6.9h-3.8l-.6-.9zM8.5 8h7a1.5 1.5 0 0 1 1.5 1.5v9.2a2.3 2.3 0 0 1-2.3 2.3H9.3A2.3 2.3 0 0 1 7 18.7V9.5A1.5 1.5 0 0 1 8.5 8zM7 12.5h10"/>'],
+    ['c', 'Cani', 'c\u2019\u00e8 una ciotola per i cani',
+      '<path d="M5 10.5c-1.3-.3-2-1.5-1.5-3S5.3 6 6.5 6.8M19 10.5c1.3-.3 2-1.5 1.5-3S18.7 6 17.5 6.8M12 20c-3.2 0-5.3-1.6-5.3-4 0-2.8 1.8-5.4 3.3-6.6C10.8 8.5 11.4 8 12 8s1.2.5 2 1.400c1.5 1.2 3.3 3.8 3.3 6.6 0 2.4-2.1 4-5.3 4zM10 14.200v.3M14 14.200v.3M12 16.500v.8"/>'],
+    ['r', 'Carrozzina', 'accessibile in carrozzina',
+      '<circle cx="10" cy="4.5" r="1.6"/><path d="M10 7.500v5h5l2.5 5.500M10 10h4.500M7.5 11.500a5 5 0 1 0 7 6.5"/>'],
+    ['x', 'Non in carrozzina', 'non accessibile in carrozzina',
+      '<circle cx="10" cy="4.5" r="1.6"/><path d="M10 7.500v5h5l2.5 5.500M10 10h4.500M7.5 11.500a5 5 0 1 0 7 6.500M3.5 3.500l17 17"/>'],
+    ['s', 'Stagionale', 'può essere chiusa in certi periodi',
+      '<circle cx="12" cy="12" r="8"/><path d="M12 7.500V12l3 2"/>']
+  ];
+  function mostraServizi(extra) {
+    if (extra === ultimiServizi) return;
+    ultimiServizi = extra;
+    const ul = $('servizi');
+    ul.textContent = '';
+    SERVIZI.forEach((s) => {
+      if (extra.indexOf(s[0]) < 0) return;
+      const li = document.createElement('li');
+      li.className = 'chip chip-' + s[0];
+      li.title = s[2].charAt(0).toUpperCase() + s[2].slice(1);
+      li.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + s[3] + '</svg>';
+      const t = document.createElement('span');
+      t.textContent = s[1];
+      li.appendChild(t);
+      li.setAttribute('aria-label', s[2]);
+      ul.appendChild(li);
+    });
+    ul.hidden = !ul.children.length;
+  }
   function mostra() {
     const i = mostrata();
     if (i == null) {
@@ -596,10 +636,11 @@
     $('dist-unita').textContent = dist.u;
     ultimoValore = dist.v; ultimaUnita = dist.u;
 
-    const strada = strade.get(i);
+    const strada = stradaDi(i);
     $('titolo').textContent = p[3] || strada || tipo.nome;
     $('dettaglio').textContent = ((p[3] || strada) ? tipo.nome + ', ' : '') + minuti(d) + inLinea + ', verso ' + verso(r.lat, r.lon, p[0], p[1]);
     $('spiega').textContent = tipo.spiega;
+    mostraServizi(p[5] || '');
     if (p[2] !== ultimoTipo) { $('figura').innerHTML = figura(p[2]); ultimoTipo = p[2]; }
 
     let nota = '';
@@ -645,7 +686,7 @@
       mini.innerHTML = glifo(p[2], false);
       const cosa = document.createElement('span');
       cosa.className = 'cosa';
-      cosa.textContent = p[3] || strade.get(v.i) || tipo.nome;
+      cosa.textContent = p[3] || stradaDi(v.i) || tipo.nome;
       const piccolo = document.createElement('small');
       piccolo.textContent = minuti(v.d) + ', verso ' + verso(r.lat, r.lon, p[0], p[1]);
       cosa.appendChild(piccolo);
