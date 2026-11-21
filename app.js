@@ -20,6 +20,8 @@
   const MAX_SEGNI = 150;
   const CHIAVE = 'sete.fontanelle.v2';
   const CHIAVE_FILTRO = 'sete.filtro';
+  const CHIAVE_NASCOSTE = 'sete.nascoste';
+  const SECONDI_ANNULLA = 7;     // quanto resta l'avviso con "Annulla"
   const GPS_INCERTO = 80;        // metri: oltre, avvisa che la posizione è approssimativa
 
   const $ = (id) => document.getElementById(id);
@@ -123,6 +125,7 @@
   let segnoIo = null, segnoScelto = null, sceltoIndice = null;
   const segni = new Map();   // indice -> Marker
   const strade = new Map();  // indice -> nome della strada
+  const nascoste = new Set(); // fontanelle nascoste dall'utente, come "lat,lon" a 5 decimali
 
   // ---------- Misure ----------
   const RAD = Math.PI / 180;
@@ -153,7 +156,61 @@
     const ore = Math.floor(m / 60), resto = m % 60;
     return ore + ' h' + (resto ? ' ' + resto + ' min' : '') + ' a piedi';
   }
-  const passa = (i) => filtro === 't' || punti[i][2] === filtro;
+  // Le fontanelle nascoste si riconoscono dalle coordinate: gli indici cambiano a ogni aggiornamento dei dati.
+  const chiaveDi = (lat, lon) => lat.toFixed(5) + ',' + lon.toFixed(5);
+  const chiave = (i) => chiaveDi(punti[i][0], punti[i][1]);
+  // Unico punto in cui si decide se una fontanella si vede: filtro del tipo e fontanelle nascoste.
+  const passa = (i) => (filtro === 't' || punti[i][2] === filtro) && !(nascoste.size && nascoste.has(chiave(i)));
+
+  // ---------- Fontanelle nascoste ----------
+  try {
+    const salvate = JSON.parse(localStorage.getItem(CHIAVE_NASCOSTE) || '[]');
+    if (Array.isArray(salvate)) salvate.forEach((k) => { if (/^-?\d+\.\d{5},-?\d+\.\d{5}$/.test(k)) nascoste.add(k); });
+  } catch (e) { /* niente: si parte senza nascoste */ }
+  function salvaNascoste() {
+    try { localStorage.setItem(CHIAVE_NASCOSTE, JSON.stringify(Array.from(nascoste))); } catch (e) { /* memoria piena */ }
+  }
+  function indiceDa(k) {
+    for (let i = 0; i < punti.length; i++) if (chiave(i) === k) return i;
+    return -1;
+  }
+  // Dopo un cambio: si ridisegna tutto e, se non resta nulla da mostrare, si toglie il segno scelto.
+  function rinfrescaTutto() {
+    ridisegnaPunti();
+    aggiorna();
+    if (mostrata() == null && segnoScelto) { segnoScelto.remove(); segnoScelto = null; sceltoIndice = null; }
+  }
+
+  let attesaAvviso = null;
+  function avviso(testo, annulla) {
+    clearTimeout(attesaAvviso);
+    $('avviso-testo').textContent = testo;
+    $('avviso').hidden = false;
+    $('btn-annulla').onclick = () => { chiudiAvviso(); annulla(); };
+    attesaAvviso = setTimeout(chiudiAvviso, SECONDI_ANNULLA * 1000);
+  }
+  function chiudiAvviso() {
+    clearTimeout(attesaAvviso);
+    $('avviso').hidden = true;
+  }
+
+  function nascondi(k) {
+    const i = indiceDa(k);
+    const eraFissata = i !== -1 && fissata === i;
+    nascoste.add(k);
+    salvaNascoste();
+    if (eraFissata) fissata = null;
+    if (stato === 'aperta') imposta('media');   // si vede subito la fontanella successiva
+    rinfrescaTutto();
+    avviso('Fatto, non la vedrai più.', () => {
+      nascoste.delete(k);
+      salvaNascoste();
+      const j = indiceDa(k);
+      if (eraFissata && j !== -1) fissata = j;
+      rinfrescaTutto();
+      if (mostrata() != null) inquadra();
+    });
+  }
 
   // ---------- Dati ----------
   function leggiSalvati() {
@@ -543,7 +600,7 @@
     if (r.mio) chiediPercorsi(tutte.slice(0, 3).map((v) => v.i));
   }
   function mostrata() {
-    return fissata != null ? fissata : (vicine[0] ? vicine[0].i : null);
+    return fissata != null && passa(fissata) ? fissata : (vicine[0] ? vicine[0].i : null);
   }
 
   function scegli(i) {
@@ -986,7 +1043,45 @@
     if (bussolaChiesta) return 'Bussola: nessuna lettura. Controlla che il browser abbia il permesso per movimento e orientamento.';
     return 'Bussola: nessuna lettura dal telefono.';
   }
+  function testoNascoste() {
+    const n = nascoste.size;
+    $('info-nascoste').hidden = n === 0;
+    if (!n) return;
+    $('info-nascoste-testo').textContent = n === 1
+      ? 'Hai nascosto 1 fontanella su questo telefono.'
+      : 'Hai nascosto ' + n.toLocaleString('it-IT') + ' fontanelle su questo telefono.';
+    $('btn-mostra-nascoste').textContent = n === 1
+      ? 'Mostra di nuovo la fontanella nascosta'
+      : 'Mostra di nuovo le ' + n.toLocaleString('it-IT') + ' fontanelle nascoste';
+  }
+  $('btn-mostra-nascoste').addEventListener('click', () => {
+    nascoste.clear();
+    salvaNascoste();
+    rinfrescaTutto();
+    testoNascoste();
+  });
+
+  // ---------- "Non funziona" ----------
+  let daSegnalare = null;    // chiave "lat,lon" della fontanella di cui si parla
+  $('btn-nonfunziona').addEventListener('click', () => {
+    const i = mostrata();
+    if (i == null) return;
+    const p = punti[i], tipo = TIPI[p[2]];
+    daSegnalare = chiave(i);
+    $('nf-nome').textContent = (p[3] || strade.get(i) || tipo.nome) + (p[3] || strade.get(i) ? ' (' + tipo.nome.toLowerCase() + ')' : '');
+    $('btn-osm').href = 'https://www.openstreetmap.org/note/new#map=19/' + p[0].toFixed(5) + '/' + p[1].toFixed(5);
+    $('nonfunziona').showModal();
+  });
+  $('btn-nascondi').addEventListener('click', () => {
+    $('nonfunziona').close();
+    if (daSegnalare) nascondi(daSegnalare);
+    daSegnalare = null;
+  });
+  $('btn-osm').addEventListener('click', () => { setTimeout(() => $('nonfunziona').close(), 0); });
+  $('nonfunziona').addEventListener('click', (e) => { if (e.target === $('nonfunziona')) $('nonfunziona').close(); });
+
   $('btn-info').addEventListener('click', () => {
+    testoNascoste();
     $('info-dati').textContent = testoDati();
     $('info-bussola').textContent = testoBussola();
     $('info').showModal();

@@ -46,7 +46,7 @@ html, body {
   background: #e8ebe6;
   color: var(--marmo);
   font-family: var(--testo);
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.4;
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
@@ -56,6 +56,8 @@ html, body {
 }
 
 button { font: inherit; color: inherit; }
+/* Il doppio tocco sui controlli non deve ingrandire la pagina. */
+button, a, .filtro, .tasto, .voce { touch-action: manipulation; }
 [hidden] { display: none !important; }
 :focus-visible { outline: 3px solid var(--acqua); outline-offset: 2px; }
 
@@ -66,13 +68,15 @@ button { font: inherit; color: inherit; }
   inset: 0;
   background: #e8ebe6;
   font-family: var(--testo);
+  /* i gesti sulla mappa sono tutti di MapLibre: la pagina non deve zoomare né scorrere */
+  touch-action: none;
 }
 .maplibregl-ctrl-bottom-left {
   bottom: calc(var(--peek) + 2px);
   left: var(--sx);
   transition: bottom 0.45s var(--molla);
 }
-.maplibregl-ctrl-attrib { font-size: 10.5px; }
+.maplibregl-ctrl-attrib { font-size: 0.6562rem; }
 
 .mirino {
   position: fixed;
@@ -113,13 +117,13 @@ button { font: inherit; color: inherit; }
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 46px;
+  min-height: 46px;
   padding: 0 16px 0 9px;
   border-radius: 12px;
   background: var(--ghisa);
   box-shadow: var(--ombra);
   font-family: var(--cifre);
-  font-size: 27px;
+  font-size: 1.6875rem;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -150,25 +154,23 @@ button { font: inherit; color: inherit; }
   gap: 8px;
   margin-top: 10px;
   padding: 4px calc(env(safe-area-inset-right, 0px) + 12px) 12px calc(env(safe-area-inset-left, 0px) + 12px);
-  overflow-x: auto;
-  scrollbar-width: none;
+  flex-wrap: wrap;   /* con testo grande i filtri vanno a capo invece di tagliarsi */
   pointer-events: none;
 }
-.filtri::-webkit-scrollbar { display: none; }
 
 .filtro {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  height: 38px;
-  padding: 0 15px;
+  min-height: 2.75rem;
+  padding: 0 16px;
   border: 0;
-  border-radius: 19px;
+  border-radius: 22px;
   background: #fff;
   color: var(--ghisa);
   box-shadow: 0 1px 2px rgb(20 28 26 / 0.16), 0 3px 10px rgb(20 28 26 / 0.12);
-  font-size: 15px;
+  font-size: 0.9375rem;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.25s, color 0.25s, transform 0.18s var(--rimbalzo);
@@ -288,15 +290,15 @@ button { font: inherit; color: inherit; }
   position: absolute;
   left: 0;
   top: -64px;
-  height: 30px;
+  height: 1.875rem;
   translate: -50% 0;
   padding: 0 12px;
   border-radius: 15px;
   background: var(--ghisa);
   color: var(--marmo);
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 650;
-  line-height: 30px;
+  line-height: 1.875rem;
   white-space: nowrap;
   box-shadow: 0 2px 8px rgb(20 28 26 / 0.3);
   animation: etichetta 0.4s var(--molla) 0.12s both;
@@ -357,7 +359,7 @@ button { font: inherit; color: inherit; }
   bottom: 0;
   display: flex;
   flex-direction: column;
-  max-height: min(84dvh, 740px);
+  max-height: min(84dvh, 740px, calc(100dvh - var(--alto) - 8px));
   border-radius: 26px 26px 0 0;
   background: var(--ghisa);
   box-shadow: 0 -6px 30px rgb(20 28 26 / 0.3);
@@ -411,13 +413,13 @@ button { font: inherit; color: inherit; }
 .compatta-dist {
   flex: 0 0 auto;
   font-family: var(--cifre);
-  font-size: 40px;
+  font-size: min(2.5rem, 11vw);
   font-weight: 800;
   line-height: 1;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-.compatta-dist .unita { margin-left: 3px; font-size: 19px; font-weight: 600; color: var(--ottone); }
+.compatta-dist .unita { margin-left: 3px; font-size: min(1.1875rem, 5vw); font-weight: 600; color: var(--ottone); }
 .compatta-testo { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; }
 .compatta-testo strong,
 .compatta-testo small {
@@ -425,8 +427,8 @@ button { font: inherit; color: inherit; }
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.compatta-testo strong { font-size: 15px; font-weight: 650; }
-.compatta-testo small { font-size: 13.5px; color: var(--tenue); }
+.compatta-testo strong { font-size: 0.9375rem; font-weight: 650; }
+.compatta-testo small { font-size: 0.8438rem; color: var(--tenue); }
 .compatta-testo small.davanti { color: var(--acqua); font-weight: 650; }
 .compatta-vai {
   flex: 0 0 auto;
@@ -448,6 +450,7 @@ button { font: inherit; color: inherit; }
   display: grid;
   place-items: center;
   width: 100%;
+  position: relative;
   height: 26px;
   padding: 0;
   border: 0;
@@ -455,6 +458,7 @@ button { font: inherit; color: inherit; }
   cursor: grab;
   touch-action: none;
 }
+.maniglia::before { content: ""; position: absolute; inset: -9px 0; }
 .maniglia span {
   width: 44px;
   height: 5px;
@@ -481,19 +485,21 @@ button { font: inherit; color: inherit; }
   display: flex;
   align-items: baseline;
   gap: 14px;
-  min-height: 22px;
+  min-height: 1.375rem;
 }
 .contesto {
   margin: 0;
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 500;
   color: var(--tenue);
 }
 .link {
-  padding: 0;
+  /* area di tocco da 44px senza far crescere la riga */
+  padding: 12px 8px;
+  margin: -12px -8px;
   border: 0;
   background: none;
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 650;
   color: var(--ottone);
   text-decoration: underline;
@@ -504,7 +510,7 @@ button { font: inherit; color: inherit; }
 .distanza {
   margin: 0 0 2px;
   font-family: var(--cifre);
-  font-size: 84px;
+  font-size: min(5.25rem, 21.5vw);
   font-weight: 800;
   line-height: 0.92;
   letter-spacing: 0.005em;
@@ -513,21 +519,21 @@ button { font: inherit; color: inherit; }
 }
 .distanza .unita {
   margin-left: 6px;
-  font-size: 34px;
+  font-size: min(2.125rem, 8.7vw);
   font-weight: 600;
   color: var(--ottone);
 }
 
 .cima h1 {
   margin: 6px 0 0;
-  font-size: 19px;
+  font-size: 1.1875rem;
   font-weight: 650;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
 .dettaglio {
   margin: 2px 0 0;
-  font-size: 15px;
+  font-size: 0.9375rem;
   color: var(--tenue);
 }
 
@@ -561,7 +567,7 @@ button { font: inherit; color: inherit; }
   padding: 10px 12px;
   border-radius: 10px;
   background: var(--ghisa-su);
-  font-size: 14px;
+  font-size: 0.875rem;
   color: var(--tenue);
 }
 
@@ -575,7 +581,7 @@ button { font: inherit; color: inherit; }
   border-radius: 16px;
   background: var(--ottone);
   color: #1a2220;
-  font-size: 17px;
+  font-size: 1.0625rem;
   font-weight: 700;
   text-decoration: none;
   transition: transform 0.18s var(--rimbalzo), background 0.2s;
@@ -593,16 +599,36 @@ button { font: inherit; color: inherit; }
 }
 .spiega {
   margin: 16px 0 0;
-  font-size: 15px;
+  font-size: 0.9375rem;
   line-height: 1.5;
   color: var(--marmo);
 }
 .resto h2 {
   margin: 22px 0 4px;
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 500;
   color: var(--tenue);
 }
+
+.segnala {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin-top: 12px;
+  padding: 0 16px 0 12px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--ghisa-su);
+  box-shadow: inset 0 0 0 1.5px var(--ghisa-filo);
+  color: var(--marmo);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.18s var(--rimbalzo);
+}
+.segnala svg { flex: 0 0 auto; width: 20px; height: 20px; color: var(--ottone); }
+.segnala:active { transform: scale(0.97); }
 
 .elenco { list-style: none; margin: 0; padding: 0; }
 .elenco li + li { border-top: 1px solid var(--ghisa-filo); }
@@ -631,16 +657,16 @@ button { font: inherit; color: inherit; }
 .voce .mini.t-n { background: var(--ghisa-su); }
 .voce .mini.t-f { background: var(--acqua-mappa); }
 .voce .mini.t-m { background: var(--ottone); }
-.voce .cosa { flex: 1 1 auto; min-width: 0; font-size: 16px; font-weight: 600; }
-.voce .cosa small { display: block; font-size: 14px; font-weight: 400; color: var(--tenue); }
+.voce .cosa { flex: 1 1 auto; min-width: 0; font-size: 1rem; font-weight: 600; }
+.voce .cosa small { display: block; font-size: 0.875rem; font-weight: 400; color: var(--tenue); }
 .voce .quanto {
   flex: 0 0 auto;
   font-family: var(--cifre);
-  font-size: 26px;
+  font-size: 1.625rem;
   font-weight: 700;
   white-space: nowrap;
 }
-.voce .quanto span { margin-left: 3px; font-size: 16px; font-weight: 600; color: var(--ottone); }
+.voce .quanto span { margin-left: 3px; font-size: 1rem; font-weight: 600; color: var(--ottone); }
 
 /* ---------- Avvio ---------- */
 
@@ -667,7 +693,7 @@ button { font: inherit; color: inherit; }
 .sipario-nome {
   margin: 4px 0 0;
   font-family: var(--cifre);
-  font-size: 64px;
+  font-size: 4rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -676,7 +702,7 @@ button { font: inherit; color: inherit; }
 .sipario-testo {
   margin: 0 0 14px;
   max-width: 30ch;
-  font-size: 16px;
+  font-size: 1rem;
   color: var(--tenue);
 }
 
@@ -684,12 +710,14 @@ button { font: inherit; color: inherit; }
   display: inline-grid;
   place-items: center;
   min-height: 52px;
-  padding: 0 24px;
+  text-align: center;
+  text-decoration: none;
+  padding: 10px 24px;
   border: 0;
   border-radius: 14px;
   background: var(--ottone);
   color: #1a2220;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
   transition: transform 0.18s var(--rimbalzo);
@@ -719,15 +747,55 @@ dialog::backdrop { background: rgb(15 21 20 / 0.55); animation: velo 0.3s ease; 
 .info-corpo h2 {
   margin: 0;
   font-family: var(--cifre);
-  font-size: 34px;
+  font-size: 2.125rem;
   font-weight: 800;
   letter-spacing: 0.02em;
   line-height: 1;
 }
 .info-corpo p { margin: 0; }
 .info-corpo form { display: grid; }
-.piccolo { font-size: 13.5px; line-height: 1.5; color: var(--tenue); }
-.info-dati { font-size: 15px; }
+.piccolo { font-size: 0.8438rem; line-height: 1.5; color: var(--tenue); }
+.info-dati { font-size: 0.9375rem; }
+
+.info-nascoste { display: grid; gap: 10px; }
+.nf-scelta { display: grid; gap: 8px; }
+
+/* Avviso breve con "Annulla", sotto i filtri */
+.avviso {
+  position: fixed;
+  z-index: 20;
+  top: calc(var(--alto) + 4px);
+  left: calc(var(--sx) + 12px);
+  right: 12px;
+  max-width: 420px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 6px 4px 16px;
+  border-radius: 14px;
+  background: var(--ghisa);
+  color: var(--marmo);
+  box-shadow: var(--ombra);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  animation: etichetta 0.35s var(--molla) both;
+}
+.avviso button {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--ottone);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
 
 .legenda { list-style: none; display: grid; gap: 16px; margin: 0; padding: 0; }
 .legenda li { display: flex; gap: 14px; align-items: flex-start; }
@@ -744,8 +812,8 @@ dialog::backdrop { background: rgb(15 21 20 / 0.55); animation: velo 0.3s ease; 
 .legenda .mini.t-n { background: var(--ghisa-su); }
 .legenda .mini.t-f { background: var(--acqua-mappa); }
 .legenda .mini.t-m { background: var(--ottone); }
-.legenda strong { display: block; font-size: 16px; }
-.legenda span { font-size: 14.5px; line-height: 1.45; color: var(--tenue); }
+.legenda strong { display: block; font-size: 1rem; }
+.legenda span { font-size: 0.9062rem; line-height: 1.45; color: var(--tenue); }
 
 /* ---------- Schermi larghi ---------- */
 
@@ -767,6 +835,7 @@ dialog::backdrop { background: rgb(15 21 20 / 0.55); animation: velo 0.3s ease; 
   .cima { padding-bottom: 20px; touch-action: auto; }
   .alto { right: auto; width: 420px; }
   .alto-riga { padding-left: 20px; }
+  .avviso { left: calc(var(--sx) + 20px); margin: 0; }
   .filtri { padding-left: 20px; flex-wrap: wrap; }
   .comandi { bottom: 24px; right: 20px; }
   .maplibregl-ctrl-bottom-left { bottom: 0; }
@@ -774,7 +843,7 @@ dialog::backdrop { background: rgb(15 21 20 / 0.55); animation: velo 0.3s ease; 
 }
 
 @media (max-width: 350px) {
-  .distanza { font-size: 68px; }
+  .distanza { font-size: min(4.25rem, 21.5vw); }
   .figura { width: 92px; height: 92px; }
 }
 
