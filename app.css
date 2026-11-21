@@ -204,6 +204,12 @@ button, a, .filtro, .tasto, .voce { touch-action: manipulation; }
 .comandi #btn-meno { margin-top: -6px; border-radius: 4px 4px 14px 14px; }
 .posizione { margin-top: 4px; }
 .posizione.attivo { background: var(--ghisa); color: var(--ottone); }
+/* In navigazione, se sposti la mappa a mano, la freccia si accende per tornare a seguirti. */
+.posizione.fuori { background: var(--ottone); color: #1a2220; animation: richiamo 1.6s ease-in-out infinite; }
+@keyframes richiamo {
+  0%, 100% { box-shadow: var(--ombra), 0 0 0 0 rgb(217 169 63 / 0.55); }
+  50% { box-shadow: var(--ombra), 0 0 0 9px rgb(217 169 63 / 0); }
+}
 
 /* ---------- Segni sulla mappa ---------- */
 
@@ -442,6 +448,9 @@ button, a, .filtro, .tasto, .voce { touch-action: manipulation; }
   transition: transform 0.18s var(--rimbalzo), background 0.2s;
 }
 .compatta-vai svg { width: 24px; height: 24px; }
+button.compatta-vai { padding: 0; border: 0; cursor: pointer; }
+.compatta-vai.fine { background: var(--ghisa-su); color: var(--marmo); box-shadow: inset 0 0 0 1.5px var(--ghisa-filo); }
+.compatta-vai.fine:active { background: var(--ghisa-filo); }
 .compatta-vai:active { transform: scale(0.94); background: var(--ottone-giu); }
 .scheda.nascosta { transform: translateY(105%); }
 
@@ -612,6 +621,22 @@ button, a, .filtro, .tasto, .voce { touch-action: manipulation; }
 }
 .vai svg { width: 24px; height: 24px; }
 .vai:active { transform: scale(0.97); background: var(--ottone-giu); }
+button.vai { width: 100%; padding: 0 16px; border: 0; font-family: inherit; cursor: pointer; }
+/* Durante la navigazione il pulsante principale diventa "Termina", discreto. */
+.vai.fine { background: var(--ghisa-su); color: var(--marmo); box-shadow: inset 0 0 0 1.5px var(--ghisa-filo); }
+.vai.fine:active { background: var(--ghisa-filo); }
+/* Il navigatore esterno resta a portata di mano, ma secondario. */
+.vai.esterno.secondario {
+  min-height: 44px;
+  margin-top: 6px;
+  background: none;
+  color: var(--tenue);
+  font-size: 0.9063rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.vai.esterno.secondario:active { background: none; color: var(--marmo); transform: none; }
 
 .resto {
   flex: 1 1 auto;
@@ -634,12 +659,13 @@ button, a, .filtro, .tasto, .voce { touch-action: manipulation; }
   color: var(--tenue);
 }
 
-.segnala {
+.azioni-scheda { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.segnala,
+.condividi {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   min-height: 44px;
-  margin-top: 12px;
   padding: 0 16px 0 12px;
   border: 0;
   border-radius: 14px;
@@ -651,8 +677,10 @@ button, a, .filtro, .tasto, .voce { touch-action: manipulation; }
   cursor: pointer;
   transition: transform 0.18s var(--rimbalzo);
 }
-.segnala svg { flex: 0 0 auto; width: 20px; height: 20px; color: var(--ottone); }
-.segnala:active { transform: scale(0.97); }
+.segnala svg,
+.condividi svg { flex: 0 0 auto; width: 20px; height: 20px; color: var(--ottone); }
+.segnala:active,
+.condividi:active { transform: scale(0.97); }
 
 .elenco { list-style: none; margin: 0; padding: 0; }
 .elenco li + li { border-top: 1px solid var(--ghisa-filo); }
@@ -806,6 +834,8 @@ dialog::backdrop { background: rgb(15 21 20 / 0.55); animation: velo 0.3s ease; 
   font-weight: 600;
   animation: etichetta 0.35s var(--molla) both;
 }
+.avviso button[hidden] { display: none; }
+.avviso:has(> button[hidden]) { padding: 12px 18px; }
 .avviso button {
   flex: 0 0 auto;
   min-width: 44px;
@@ -838,6 +868,42 @@ dialog::backdrop { background: rgb(15 21 20 / 0.55); animation: velo 0.3s ease; 
 .legenda .mini.t-m { background: var(--ottone); }
 .legenda strong { display: block; font-size: 1rem; }
 .legenda span { font-size: 0.9062rem; line-height: 1.45; color: var(--tenue); }
+
+/* ---------- Arrivo e avvisi ---------- */
+
+.arrivo {
+  position: fixed;
+  z-index: 20;
+  left: calc(50% + var(--sx) / 2);
+  top: 30%;
+  width: min(86vw, 320px);
+  box-sizing: border-box;
+  padding: 14px 22px 18px;
+  border-radius: 26px;
+  background: var(--ghisa);
+  color: var(--marmo);
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--ottone), 0 18px 50px rgb(20 28 26 / 0.45);
+  transform: translate(-50%, -50%);
+  animation: arrivo 0.6s var(--rimbalzo) both;
+  cursor: pointer;
+}
+@keyframes arrivo {
+  from { opacity: 0; transform: translate(-50%, -46%) scale(0.85); }
+  to { opacity: 1; transform: translate(-50%, -50%); }
+}
+.arrivo-figura { width: 96px; height: 96px; margin: 0 auto; }
+.arrivo-figura svg { display: block; width: 100%; height: 100%; }
+.arrivo-titolo {
+  margin: 4px 0 0;
+  font-family: var(--cifre);
+  font-size: 2.875rem;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--ottone);
+}
+.arrivo-testo { margin: 8px 0 0; font-size: 1.125rem; font-weight: 600; }
 
 /* ---------- Schermi larghi ---------- */
 

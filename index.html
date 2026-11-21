@@ -61,6 +61,9 @@
     <a class="compatta-vai" id="mini-vai" href="#" target="_blank" rel="noopener" aria-label="Indicazioni a piedi">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="13" cy="4.2" r="2.2" fill="currentColor"/><path d="M13.5 8.5 10 10.2l-1.2 4M13.5 8.5l1.2 4.3 3 1.7M13.5 8.5l-1.3 6-3.2 5.5M12.2 14.5l3 2.5.8 4" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </a>
+    <button class="compatta-vai" id="mini-azione" type="button" aria-label="Vai alla fontanella" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true" id="mini-azione-icona"></svg>
+    </button>
   </div>
 
   <div class="cima" id="cima">
@@ -78,24 +81,39 @@
       <div class="figura" id="figura" aria-hidden="true"></div>
     </div>
     <p class="nota" id="nota" hidden></p>
-    <a class="vai" id="btn-vai" href="#" target="_blank" rel="noopener">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="13" cy="4.2" r="2.2" fill="currentColor"/><path d="M13.5 8.5 10 10.2l-1.2 4M13.5 8.5l1.2 4.3 3 1.7M13.5 8.5l-1.3 6-3.2 5.5M12.2 14.5l3 2.5.8 4" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span>Indicazioni a piedi</span>
+    <button class="vai" id="btn-vai" type="button" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true" id="vai-icona"><circle cx="13" cy="4.2" r="2.2" fill="currentColor"/><path d="M13.5 8.5 10 10.2l-1.2 4M13.5 8.5l1.2 4.3 3 1.7M13.5 8.5l-1.3 6-3.2 5.5M12.2 14.5l3 2.5.8 4" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span id="vai-testo">Vai</span>
+    </button>
+    <a class="vai esterno" id="btn-esterno" href="#" target="_blank" rel="noopener">
+      <span id="esterno-testo">Indicazioni a piedi</span>
     </a>
   </div>
 
   <div class="resto" id="resto">
     <p class="spiega" id="spiega"></p>
+    <div class="azioni-scheda">
+    <button class="condividi" id="btn-condividi" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M8 7.5 12 3.5l4 4M6 11H5.5A1.5 1.5 0 0 0 4 12.5v6A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5v-6a1.5 1.5 0 0 0-1.5-1.5H18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Condividi questa fontanella</span>
+    </button>
     <button class="segnala" id="btn-nonfunziona" type="button">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5v5.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="16.6" r="1.3" fill="currentColor"/></svg>
       <span>Non funziona</span>
     </button>
+    </div>
     <h2>Altre vicine</h2>
     <ol class="elenco" id="elenco"></ol>
   </div>
 </section>
 
-<div class="avviso" id="avviso" role="status" hidden>
+<div class="arrivo" id="arrivo" role="status" aria-live="assertive" hidden>
+  <div class="arrivo-figura" id="arrivo-figura" aria-hidden="true"></div>
+  <p class="arrivo-titolo" id="arrivo-titolo"></p>
+  <p class="arrivo-testo" id="arrivo-testo"></p>
+</div>
+
+<div class="avviso" id="avviso" role="status" aria-live="polite" hidden>
   <span id="avviso-testo"></span>
   <button type="button" id="btn-annulla">Annulla</button>
 </div>
