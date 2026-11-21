@@ -92,7 +92,7 @@ solo per le zone che hai già guardato.
 | `icons/` | Logo (`logo.svg`) e icone |
 | `fonts/`, `vendor/` | Caratteri (Big Shoulders, Hanken Grotesk) e libreria della mappa (MapLibre), inclusi nel pacchetto |
 
-Se modifichi i file dopo averla installata, cambia `sete-v9` in `sete-v10` in cima a `sw.js`,
+Se modifichi i file dopo averla installata, cambia `sete-v10` in `sete-v11` in cima a `sw.js`,
 così il telefono scarica la versione nuova.
 
 ## Fontanelle sempre aggiornate

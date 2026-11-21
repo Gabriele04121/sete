@@ -1387,13 +1387,14 @@
 
   async function caricaDati() {
     $('btn-riprova').hidden = true;
-    const vecchi = () => Date.now() - quando > GIORNI_VALIDITA * 864e5;
+    // Dati scaduti, oppure nel formato vecchio senza strade e servizi: si aggiornano in sottofondo.
+    const vecchi = () => Date.now() - quando > GIORNI_VALIDITA * 864e5 || (punti[0] && punti[0].length < 6);
     if (leggiSalvati()) {
       if (vecchi() && navigator.onLine) {
         // Prima la copia pubblicata con l'app, poi, se serve ancora, OpenStreetMap.
         (async () => {
           const j = await leggiPacchetto();
-          if (j && j.quando > quando) { usaPacchetto(j); strade.clear(); ridisegnaPunti(); aggiorna(); }
+          if (j && (j.quando > quando || punti[0].length < 6)) { usaPacchetto(j); strade.clear(); ridisegnaPunti(); aggiorna(); }
           if (vecchi()) await scarica().then(() => { ridisegnaPunti(); aggiorna(); }).catch(() => {});
         })();
       }
