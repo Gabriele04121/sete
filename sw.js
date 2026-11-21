@@ -1,6 +1,6 @@
 // Sete: funzionamento offline.
 // Cambia il numero di versione quando modifichi i file, così il telefono scarica quelli nuovi.
-const VERSIONE = 'sete-v3';
+const VERSIONE = 'sete-v4';
 const MAPPA = 'sete-mappa';
 const MAX_TASSELLI = 1500;
 
@@ -12,7 +12,7 @@ const FILE = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSIONE).then((c) => c.addAll(FILE)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSIONE).then((c) => c.addAll(FILE.map((f) => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -59,7 +59,7 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(
       caches.open(VERSIONE).then(async (c) => {
         const salvato = await c.match(req, { ignoreSearch: true });
-        const rete = fetch(req).then((r) => { if (r.ok) c.put(req, r.clone()); return r; }).catch(() => salvato);
+        const rete = fetch(req.url, { cache: 'no-cache' }).then((r) => { if (r.ok) c.put(req, r.clone()); return r; }).catch(() => salvato);
         return salvato || rete;
       })
     );

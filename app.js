@@ -784,7 +784,18 @@
     return punti.length.toLocaleString('it-IT') + ' punti d\u2019acqua: ' + conta('n') + ' nasoni, ' + conta('f') +
       ' fontanelle, ' + conta('m') + ' fontane. Scaricati il ' + data + '.';
   }
-  $('btn-info').addEventListener('click', () => { $('info-dati').textContent = testoDati(); $('info').showModal(); });
+  function testoBussola() {
+    if (ultimaBussola && Date.now() - ultimaBussola < 5000) return 'Bussola: attiva, il fascio dorato mostra dove punti il telefono.';
+    if (rotta != null) return 'Bussola: non disponibile, la direzione arriva dal GPS mentre cammini.';
+    if (!window.DeviceOrientationEvent) return 'Bussola: questo browser non la supporta.';
+    if (bussolaChiesta) return 'Bussola: nessuna lettura. Controlla che il browser abbia il permesso per movimento e orientamento.';
+    return 'Bussola: nessuna lettura dal telefono.';
+  }
+  $('btn-info').addEventListener('click', () => {
+    $('info-dati').textContent = testoDati();
+    $('info-bussola').textContent = testoBussola();
+    $('info').showModal();
+  });
   $('info').addEventListener('click', (e) => { if (e.target === $('info')) $('info').close(); });
   $('btn-aggiorna').addEventListener('click', async () => {
     const b = $('btn-aggiorna');
