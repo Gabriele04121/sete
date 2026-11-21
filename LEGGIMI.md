@@ -66,7 +66,7 @@ solo per le zone che hai già guardato.
 | `icons/` | Logo (`logo.svg`) e icone |
 | `fonts/`, `vendor/` | Caratteri (Big Shoulders, Hanken Grotesk) e libreria della mappa (MapLibre), inclusi nel pacchetto |
 
-Se modifichi i file dopo averla installata, cambia `sete-v4` in `sete-v5` in cima a `sw.js`,
+Se modifichi i file dopo averla installata, cambia `sete-v5` in `sete-v6` in cima a `sw.js`,
 così il telefono scarica la versione nuova.
 
 ## Dati e licenze

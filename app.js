@@ -624,7 +624,7 @@
     const p = punti[i];
     if (io && !ioLontano && metri(io.lat, io.lon, p[0], p[1]) < 4000) {
       const b = new maplibregl.LngLatBounds([io.lon, io.lat], [io.lon, io.lat]).extend([p[1], p[0]]);
-      map.fitBounds(b, { padding: { top: 70, bottom: 70, left: 60, right: 76 }, maxZoom: 17, duration: 1100, essential: true });
+      map.fitBounds(b, { padding: { top: 90, bottom: 70, left: 60, right: 76 }, maxZoom: 17, duration: 1100, essential: true });
     } else {
       map.easeTo({ center: [p[1], p[0]], zoom: Math.max(map.getZoom(), 15.5), duration: 900, essential: true });
     }
@@ -637,11 +637,18 @@
       const el = document.createElement('div');
       el.className = 'io';
       // Il cono mostra dove punta il telefono, come in Google Maps.
-      el.innerHTML = '<div class="cono" id="cono"><svg viewBox="-60 -60 120 120" aria-hidden="true">' +
-        '<defs><radialGradient id="cono-sfuma" cx="0" cy="0" r="58" gradientUnits="userSpaceOnUse">' +
-        '<stop offset="0.15" stop-color="#d9a93f" stop-opacity=".75"/>' +
-        '<stop offset="1" stop-color="#d9a93f" stop-opacity="0"/></radialGradient></defs>' +
-        '<path id="cono-spicchio" fill="url(#cono-sfuma)"/></svg></div>';
+      el.innerHTML = '<div class="onda"></div>' +
+        '<div class="cono" id="cono"><svg viewBox="-76 -76 152 152" aria-hidden="true"><defs>' +
+        '<radialGradient id="cono-sfuma" cx="0" cy="0" r="74" gradientUnits="userSpaceOnUse">' +
+        '<stop offset="0.12" stop-color="#d9a93f" stop-opacity=".95"/>' +
+        '<stop offset="0.55" stop-color="#d9a93f" stop-opacity=".5"/>' +
+        '<stop offset="1" stop-color="#d9a93f" stop-opacity="0"/></radialGradient>' +
+        '<linearGradient id="cono-bordo" x1="0" y1="0" x2="0" y2="-74" gradientUnits="userSpaceOnUse">' +
+        '<stop offset="0" stop-color="#c2932d" stop-opacity=".9"/>' +
+        '<stop offset="1" stop-color="#c2932d" stop-opacity="0"/></linearGradient></defs>' +
+        '<path id="cono-spicchio" fill="url(#cono-sfuma)"/>' +
+        '<path id="cono-lati" fill="none" stroke="url(#cono-bordo)" stroke-width="1.4" stroke-linejoin="round"/>' +
+        '</svg></div><div class="punto"></div>';
       segnoIo = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([io.lon, io.lat]).addTo(map);
       disegnaCono();
     } else segnoIo.setLngLat([io.lon, io.lat]);
@@ -650,7 +657,7 @@
   // ---------- Direzione (bussola) ----------
   let rotta = null;          // gradi da nord, già filtrati
   let rottaGrezza = null;    // ultimo valore letto
-  let ampiezza = 50;         // apertura del cono in gradi: più larga se la bussola è incerta
+  let ampiezza = 44;         // apertura del cono in gradi: più larga se la bussola è incerta
   let ultimaBussola = 0;
   let giroCono = 0;
 
@@ -661,7 +668,7 @@
   function nuovaRotta(gradi, incertezza) {
     if (gradi == null || isNaN(gradi)) return;
     rottaGrezza = ((gradi % 360) + 360) % 360;
-    if (incertezza != null && incertezza >= 0) ampiezza = Math.min(110, Math.max(40, incertezza * 2));
+    if (incertezza != null && incertezza >= 0) ampiezza = Math.min(100, Math.max(38, incertezza * 2));
     if (!giroCono) giroCono = requestAnimationFrame(passoCono);
   }
   // Ammorbidisce i salti della bussola, passando sempre dalla parte più corta.
@@ -680,10 +687,11 @@
     const cono = document.getElementById('cono');
     if (!cono) return;
     if (rotta == null) { cono.classList.remove('vista'); return; }
-    const mezzo = ampiezza / 2 * RAD, r = 58;
+    const mezzo = ampiezza / 2 * RAD, r = 72;
     const x = (r * Math.sin(mezzo)).toFixed(1), y = (-r * Math.cos(mezzo)).toFixed(1);
     document.getElementById('cono-spicchio').setAttribute('d',
       'M0 0L' + (-x) + ' ' + y + 'A' + r + ' ' + r + ' 0 0 1 ' + x + ' ' + y + 'Z');
+    document.getElementById('cono-lati').setAttribute('d', 'M' + (-x) + ' ' + y + 'L0 0L' + x + ' ' + y);
     const giro = rotta - (map ? map.getBearing() : 0);
     cono.style.transform = 'rotate(' + giro.toFixed(1) + 'deg)';
     cono.classList.add('vista');
