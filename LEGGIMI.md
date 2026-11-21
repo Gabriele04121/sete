@@ -57,6 +57,12 @@ della mappa: basta spostarla.
   Se il fascio è largo, la bussola è incerta: muovi il telefono disegnando un 8 per calibrarla.
 - Senza posizione, la "più vicina" è quella rispetto al centro della mappa: sposta la mappa per esplorare.
 - Il pulsante "i" mostra la legenda, quante fontanelle ci sono e permette di riscaricarle.
+- Se una fontanella non funziona, apri la scheda e tocca "Non funziona". Puoi nasconderla sul tuo telefono
+  (sparisce da mappa ed elenco, e per qualche secondo c'è "Annulla") oppure segnalarla su OpenStreetMap, così la
+  correggono per tutti. Nel pulsante "i" vedi quante ne hai nascoste e puoi farle riapparire tutte.
+  Le nascoste sono ricordate per coordinate, quindi restano nascoste anche dopo un aggiornamento dei dati.
+- Il testo si può ingrandire: l'app segue la dimensione del testo impostata nel telefono e si può anche
+  ingrandire la pagina con il pizzico; la mappa ha i suoi gesti e non viene toccata.
 
 ## Offline
 
