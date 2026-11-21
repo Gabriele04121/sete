@@ -37,6 +37,39 @@
   </nav>
 </header>
 
+<section class="guida" id="guida" hidden aria-live="polite" aria-label="Indicazioni">
+  <div class="guida-icona" aria-hidden="true">
+    <svg viewBox="0 0 48 48" id="guida-svg" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"></svg>
+  </div>
+  <div class="guida-testo">
+    <p class="guida-dist" id="guida-dist"></p>
+    <p class="guida-frase" id="guida-frase">Cerco la strada migliore…</p>
+  </div>
+  <button class="guida-voce" id="btn-voce" type="button" aria-pressed="false" aria-label="Indicazioni a voce">
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/>
+      <path class="voce-on" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>
+      <path class="voce-off" d="M16 9.5l5 5M21 9.5l-5 5"/>
+    </svg>
+  </button>
+  <p class="guida-poi" id="guida-poi" hidden></p>
+</section>
+
+<aside class="luogo" id="luogo" hidden aria-live="polite">
+  <div class="luogo-img" id="luogo-img" aria-hidden="true"></div>
+  <div class="luogo-testo">
+    <p class="luogo-lato" id="luogo-lato"></p>
+    <p class="luogo-nome" id="luogo-nome"></p>
+    <p class="luogo-descr" id="luogo-descr"></p>
+  </div>
+  <a class="luogo-link" id="luogo-link" href="#" target="_blank" rel="noopener" aria-label="Leggi su Wikipedia">
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 5h5v5M19 5l-8 8M17 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h4"/></svg>
+  </a>
+  <button class="luogo-chiudi" id="luogo-chiudi" type="button" aria-label="Chiudi">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+  </button>
+</aside>
+
 <div class="comandi">
   <button class="tasto" id="btn-piu" type="button" aria-label="Ingrandisci la mappa">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
