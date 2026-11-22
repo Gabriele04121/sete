@@ -316,7 +316,10 @@ button, a, .filtro, .tasto, .voce { touch-action: manipulation; }
 }
 
 /* Io: un solo punto netto, un'onda che parte dal suo bordo e il fascio della bussola. */
-.io { width: 0; height: 0; pointer-events: none; }
+.io { z-index: 6; width: 0; height: 0; pointer-events: none; }
+/* le etichette dei luoghi stanno sotto la tua freccia e sotto la fontanella scelta */
+.segno-luogo-ancora { z-index: 1; }
+.naviga .segno-luogo { opacity: 0.92; }
 .io > * { position: absolute; border-radius: 50%; }
 .io .onda {
   left: -12px;
