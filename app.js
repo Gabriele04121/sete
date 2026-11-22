@@ -24,7 +24,7 @@
   const SECONDI_ANNULLA = 7;     // quanto resta l'avviso con "Annulla"
   const GPS_INCERTO = 80;        // metri: oltre, avvisa che la posizione è approssimativa
   // Navigazione dentro Sete ("Vai"); con false il pulsante apre Google Maps (o Mappe su iPhone).
-  const NAVIGAZIONE_INTERNA = true;
+  const NAVIGAZIONE_INTERNA = false;
   const SOGLIA_ARRIVO = 15;      // metri: sotto, sei arrivato
   const ZOOM_CAMMINO = 18;       // zoom della mappa mentre cammini con "Vai"
   const INCLINAZIONE = 50;       // gradi: in navigazione la mappa si inclina per vedere la strada davanti
