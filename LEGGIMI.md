@@ -46,9 +46,19 @@ della mappa: basta spostarla.
 - Trascina la scheda verso l'alto (o tocca la maniglia) per leggere com'è fatta e vedere le altre vicine.
 - Trascinala verso il basso per ridurla a una barra sottile e liberare la mappa. La freccia nella barra punta verso
   la fontanella mentre giri il telefono: quando diventa azzurra ce l'hai davanti. Tocca la barra per riaprire la scheda.
-- "Indicazioni a piedi" apre il percorso a piedi in Google Maps (su iPhone in Mappe).
-  Una navigazione dentro Sete, con vista inclinata, svolte e luoghi lungo la strada, è pronta nel ramo
-  `navigazione-guidata` ma per ora è spenta.
+- "Vai" avvia la navigazione dentro Sete. La mappa si inclina, ruota nella direzione in cui cammini e ti segue,
+  con te in basso e la strada davanti; il percorso diventa una linea azzurra e il tuo punto una freccia.
+  - In alto un banner dice la prossima svolta e quanto manca ("Tra 80 m, gira a destra in Via del Corso"),
+    con "Poi…" quando due svolte sono vicine. Se esci dal percorso lo ricalcola da solo.
+  - Lungo la strada compaiono i luoghi notevoli (monumenti, chiese, piazze, musei). Quando ci passi accanto una
+    scheda dice "Alla tua destra: Colosseo" con una riga da Wikipedia; toccala per leggere di più.
+  - Il pulsante con l'altoparlante nel banner attiva le indicazioni a voce (spente all'inizio, l'app ricorda la scelta).
+    Prima di ogni svolta il telefono vibra.
+  - In basso restano la distanza, i minuti e l'orario di arrivo. Se sposti la mappa a mano smette di seguirti:
+    tocca la freccia dorata in basso a destra per tornare alla vista di navigazione.
+  - Sotto i 15 m compare "Sei arrivato" e la navigazione finisce da sola; la X nella barra la chiude prima.
+    Lo schermo resta acceso finché navighi, dove il telefono lo permette.
+- Sotto "Vai", "Apri in Google Maps" (su iPhone "Apri in Mappe") passa le indicazioni al navigatore del telefono.
 - "Condividi" (nella scheda aperta) invia un link come `.../sete/?f=41.90060,12.47690`: chi lo apre
   trova la fontanella già scelta sulla mappa. Se il telefono non ha il foglio di condivisione, il link viene copiato
   ("Link copiato").
@@ -83,12 +93,13 @@ solo per le zone che hai già guardato.
 | `app.js` | Dati, posizione, calcolo della più vicina. Le impostazioni sono in cima al file |
 | `sw.js` | Funzionamento offline |
 | `fontanelle.json` | Copia pronta delle fontanelle, aggiornata dalla GitHub Action |
+| `luoghi.json` | Luoghi notevoli per la navigazione, aggiornati dalla GitHub Action |
 | `strumenti/` | Script che scarica le fontanelle per `fontanelle.json` |
 | `manifest.webmanifest` | Nome e icona dell'app installata |
 | `icons/` | Logo (`logo.svg`) e icone |
 | `fonts/`, `vendor/` | Caratteri (Big Shoulders, Hanken Grotesk) e libreria della mappa (MapLibre), inclusi nel pacchetto |
 
-Se modifichi i file dopo averla installata, cambia `sete-v12` in `sete-v13` in cima a `sw.js`,
+Se modifichi i file dopo averla installata, cambia `sete-v13` in `sete-v14` in cima a `sw.js`,
 così il telefono scarica la versione nuova.
 
 ## Fontanelle sempre aggiornate
@@ -96,6 +107,8 @@ così il telefono scarica la versione nuova.
 La GitHub Action `.github/workflows/fontanelle.yml` scarica ogni lunedì le fontanelle da OpenStreetMap con
 `strumenti/fontanelle.mjs` e aggiorna `fontanelle.json`, solo se qualcosa è cambiato. Puoi farla partire a mano
 dalla scheda Actions del repository: "Aggiorna le fontanelle", poi "Run workflow".
+Lo stesso giro aggiorna `luoghi.json` con `strumenti/luoghi.mjs`: i luoghi notevoli di Roma che hanno una pagina
+Wikipedia (monumenti, chiese, piazze, musei, parchi), usati dalla navigazione.
 
 Lo script calcola anche la strada di ogni fontanella: scarica da Overpass le strade, le piazze e le aree pedonali
 con nome e assegna a ogni punto quella più vicina, entro 60 metri (altrimenti niente). Così l'indirizzo è già nel
@@ -115,7 +128,8 @@ Per provare lo script senza rete: `SETE_PROVA=risposte.json SETE_USCITA=/percors
 - Indirizzi: già calcolati nel file delle fontanelle; Nominatim (OpenStreetMap) solo per i punti che non ce l'hanno,
   adatto a un uso leggero e personale.
 - Percorsi a piedi: server OSRM di FOSSGIS (routing.openstreetmap.de), lo stesso di openstreetmap.org,
-  per un uso leggero.
+  per un uso leggero. In navigazione si chiede il percorso con le svolte una volta, e di nuovo solo se esci di strada.
+- Descrizioni dei luoghi: riassunti di Wikipedia, chiesti solo quando un luogo compare durante la navigazione.
 - MapLibre GL JS: licenza BSD. Caratteri: SIL Open Font License.
 
 I dati sono curati da volontari: una fontanella può essere chiusa, spostata o mancare, e molti nasoni

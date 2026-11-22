@@ -25,9 +25,14 @@
   const GPS_INCERTO = 80;        // metri: oltre, avvisa che la posizione è approssimativa
   // Navigazione dentro Sete: spenta, le indicazioni si aprono in Google Maps (o Mappe su iPhone).
   // La versione guidata (vista inclinata, svolte, luoghi) è nel ramo "navigazione-guidata".
-  const NAVIGAZIONE_INTERNA = false;
+  const NAVIGAZIONE_INTERNA = true;
   const SOGLIA_ARRIVO = 15;      // metri: sotto, sei arrivato
-  const ZOOM_CAMMINO = 17.5;     // zoom della mappa mentre cammini con "Vai"
+  const ZOOM_CAMMINO = 18;       // zoom della mappa mentre cammini con "Vai"
+  const INCLINAZIONE = 50;       // gradi: in navigazione la mappa si inclina per vedere la strada davanti
+  const FUORI_PERCORSO = 35;     // metri: oltre, il percorso si ricalcola
+  const VICINO_LUOGO = 50;       // metri dal bordo di un luogo notevole per annunciarlo
+  const LUOGHI = 'luoghi.json';  // monumenti, chiese, piazze... preparati dalla GitHub Action
+  const CHIAVE_VOCE = 'sete.voce';
   const RAGGIO_LINK = 30;        // metri: tolleranza per ritrovare una fontanella da un link condiviso
 
   const $ = (id) => document.getElementById(id);
@@ -360,6 +365,7 @@
   }
 
   function margini() {
+    if (navigando && seguendo) return marginiGuida();
     const alto = $('filtri').getBoundingClientRect().bottom;
     if (largo.matches) return { top: 20, bottom: 20, left: 420, right: 20 };
     // mentre ti segue, la mappa ti tiene un po' più in basso per mostrarti la strada davanti
@@ -369,7 +375,9 @@
   let inquadrata = false;    // vero finché l'utente non sposta la mappa dopo un'inquadratura
   function applicaMargini() {
     const m = margini();
-    document.documentElement.style.setProperty('--alto', m.top + 'px');
+    // in navigazione gli avvisi stanno sotto il banner delle indicazioni, non sotto i filtri
+    const altoAvvisi = navigando ? Math.round($('guida').getBoundingClientRect().bottom) : m.top;
+    document.documentElement.style.setProperty('--alto', altoAvvisi + 'px');
     document.documentElement.style.setProperty('--peek', (largo.matches ? 0 : visibile()) + 'px');
     if (!map) return;
     // Mai interrompere un movimento della mappa già in corso: si rimanda alla fine.
@@ -378,7 +386,8 @@
     if (p.top !== m.top || p.bottom !== m.bottom || p.left !== m.left || p.right !== m.right) {
       // Se la mappa sta inquadrando te e la fontanella, si rifà l'inquadratura con i margini nuovi:
       // spostare solo i margini farebbe scivolare la fontanella sotto i filtri o sotto la scheda.
-      if (inquadrata) { map.setPadding(m); inquadra(); }
+      if (navigando && seguendo) seguiMappa(false);
+      else if (inquadrata) { map.setPadding(m); inquadra(); }
       else map.easeTo({ padding: m, duration: 300 });
     }
   }
@@ -395,6 +404,7 @@
       attributionControl: false,
       dragRotate: false,
       pitchWithRotate: false,
+      touchPitch: false,
       maxPitch: 0
     });
     map.touchZoomRotate.disableRotation();
@@ -548,6 +558,7 @@
   function lineaVia() {
     const i = mostrata(), r = riferimento();
     if (i == null || !r.mio) return null;
+    if (navigando && guida && prog) return lineaRestante();
     const fine = [punti[i][1], punti[i][0]], rt = percorsoValido(i, r);
     return rt ? [[r.lon, r.lat]].concat(rt.geom, [fine]) : [[r.lon, r.lat], fine];
   }
@@ -573,6 +584,8 @@
   // Distanza da mostrare: a piedi se c'è il percorso, altrimenti in linea d'aria.
   function distanzaVera(i, r) {
     const p = punti[i], dritta = metri(r.lat, r.lon, p[0], p[1]);
+    // in navigazione: quanto resta lungo il percorso guidato
+    if (navigando && i === meta && guida && prog) return { d: Math.max(0, guida.tot - prog.cum) + prog.off, aPiedi: true };
     const rt = percorsoValido(i, r);
     if (!rt) return { d: dritta, aPiedi: false };
     // mentre cammini si corregge con quanto ti sei avvicinato, senza richiedere il percorso a ogni passo
@@ -581,7 +594,8 @@
   let attesaRicalcolo = null;
   function chiediPercorsi(indici) {
     const r = riferimento();
-    if (!r.mio || !navigator.onLine || percorsiFalliti >= 3) return;
+    // in navigazione il percorso lo gestisce la guida, con meno richieste
+    if (navigando || !r.mio || !navigator.onLine || percorsiFalliti >= 3) return;
     indici.forEach((i) => {
       if (percorsiInCorso.has(i)) return;
       const rt = percorsi.get(i);
@@ -700,6 +714,7 @@
       return;
     }
     const p = punti[i], r = riferimento(), tipo = TIPI[p[2]];
+    if (navigando) aggiornaProgresso();
     const vera = distanzaVera(i, r), d = vera.d;
     if (r.mio) chiediPercorsi([i]);
     const rt = percorsi.get(i);
@@ -746,7 +761,7 @@
     $('mini-num').textContent = cifre(dist.v);
     $('mini-unita').textContent = dist.u;
     $('mini-titolo').textContent = $('titolo').textContent;
-    miniTesto = arrivato ? 'Ci sei' : minuti(d);
+    miniTesto = arrivato ? 'Ci sei' : navigando ? minuti(d).replace(' a piedi', '') + ' \u00b7 arrivo alle ' + orario(d) : minuti(d);
     rottaVerso = gradiVerso(r.lat, r.lon, p[0], p[1]);
     aggiornaFreccia();
 
@@ -758,6 +773,7 @@
     cercaStrada(i);
     riempiElenco();
     misuraScheda();
+    if (navigando) aggiornaGuida();
   }
 
   function riempiElenco() {
@@ -835,20 +851,388 @@
   }
   document.addEventListener('visibilitychange', () => { if (navigando) tieniSchermoAcceso(); });
 
-  // La mappa tiene sempre in vista te e il tratto che resta fino alla fontanella:
-  // da lontano si vede tutto il percorso, avvicinandoti lo zoom cresce fino a quello da camminata.
+  // ---------- Navigazione guidata ----------
+  // Mentre cammini la mappa si inclina, ruota nella direzione del percorso e ti segue, con te in basso
+  // e la strada davanti. In alto un banner dice la prossima svolta; lungo la strada si indicano i luoghi notevoli.
+  let guida = null;          // {geom, cum, tot, passi: [{tipo, mod, nome, uscita, at}], t}
+  let guidaInCorso = false, ultimaRichiestaGuida = 0;
+  let prog = null;           // posizione sul percorso: {cum, off, seg}
+  let passoDetto = -1, passoVibrato = -1;
+  let voce = false;
+  try { voce = localStorage.getItem(CHIAVE_VOCE) === '1'; } catch (e) { /* niente */ }
+
+  function orario(d) {
+    const t = new Date(Date.now() + Math.max(1, Math.round(d / METRI_AL_MINUTO)) * 60e3);
+    return t.getHours() + ':' + String(t.getMinutes()).padStart(2, '0');
+  }
+  function parla(testo) {
+    if (!voce || !window.speechSynthesis) return;
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(testo);
+      u.lang = 'it-IT';
+      u.rate = 1.02;
+      speechSynthesis.speak(u);
+    } catch (e) { /* voce non disponibile */ }
+  }
+  function vibra(schema) {
+    if (navigator.vibrate) { try { navigator.vibrate(schema); } catch (e) { /* niente */ } }
+  }
+
+  // Geometria del percorso in metri, con un piano locale: basta e avanza per qualche chilometro.
+  function piano(lat, lon) {
+    return [lon * RAD * Math.cos(41.9 * RAD) * 6371000, lat * RAD * 6371000];
+  }
+  function preparaGuida(via) {
+    const geom = via.geometry.coordinates, cum = [0];
+    for (let k = 1; k < geom.length; k++) cum.push(cum[k - 1] + metri(geom[k - 1][1], geom[k - 1][0], geom[k][1], geom[k][0]));
+    const tot = cum[cum.length - 1];
+    const passi = [], scala = via.distance > 0 ? tot / via.distance : 1;
+    let somma = 0;
+    ((via.legs && via.legs[0] && via.legs[0].steps) || []).forEach((st) => {
+      const m = st.maneuver || {};
+      passi.push({ tipo: m.type || '', mod: m.modifier || '', nome: st.name || '', uscita: m.exit, at: somma * scala });
+      somma += st.distance || 0;
+    });
+    return { geom, cum, tot, passi, t: Date.now() };
+  }
+  // Dove sei sul percorso: il punto più vicino della linea, quanti metri ne hai percorsi e quanto ne sei lontano.
+  function progressoSu(lat, lon) {
+    const g = guida.geom, q = piano(lat, lon);
+    let migliore = { cum: 0, off: Infinity, seg: 0 };
+    for (let k = 0; k < g.length - 1; k++) {
+      const a = piano(g[k][1], g[k][0]), b = piano(g[k + 1][1], g[k + 1][0]);
+      const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
+      const t = l2 ? Math.max(0, Math.min(1, ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / l2)) : 0;
+      const off = Math.hypot(q[0] - a[0] - t * dx, q[1] - a[1] - t * dy);
+      if (off < migliore.off) migliore = { cum: guida.cum[k] + t * (guida.cum[k + 1] - guida.cum[k]), off, seg: k };
+    }
+    return migliore;
+  }
+  function puntoA(cum) {
+    const g = guida.geom, c = guida.cum;
+    if (cum <= 0) return g[0];
+    for (let k = 0; k < g.length - 1; k++) {
+      if (c[k + 1] >= cum) {
+        const t = c[k + 1] > c[k] ? (cum - c[k]) / (c[k + 1] - c[k]) : 0;
+        return [g[k][0] + t * (g[k + 1][0] - g[k][0]), g[k][1] + t * (g[k + 1][1] - g[k][1])];
+      }
+    }
+    return g[g.length - 1];
+  }
+  function lineaRestante() {
+    const fine = [punti[meta][1], punti[meta][0]];
+    return [[io.lon, io.lat], puntoA(prog.cum)].concat(guida.geom.slice(prog.seg + 1), [fine]);
+  }
+  function aggiornaProgresso() {
+    prog = guida && io ? progressoSu(io.lat, io.lon) : null;
+  }
+  // Direzione in cui stai camminando: quella del percorso davanti a te, altrimenti la bussola o la meta.
+  function direzioneMarcia() {
+    if (guida && prog && prog.off < FUORI_PERCORSO) {
+      const a = puntoA(prog.cum), b = puntoA(Math.min(guida.tot, prog.cum + 25));
+      if (a[0] !== b[0] || a[1] !== b[1]) return gradiVerso(a[1], a[0], b[1], b[0]);
+    }
+    if (rotta != null) return rotta;
+    if (meta != null && io) return gradiVerso(io.lat, io.lon, punti[meta][0], punti[meta][1]);
+    return null;
+  }
+
+  function chiediGuida() {
+    if (!navigando || guidaInCorso || !io || meta == null || !navigator.onLine) return;
+    guidaInCorso = true;
+    ultimaRichiestaGuida = Date.now();
+    const p = punti[meta], mio = meta, ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    fetch(SERVER_PERCORSI + io.lon + ',' + io.lat + ';' + p[1] + ',' + p[0] + '?overview=full&geometries=geojson&steps=true', { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
+      .then((j) => {
+        const via = j && j.code === 'Ok' && j.routes && j.routes[0];
+        if (!via || !navigando || meta !== mio) return;
+        guida = preparaGuida(via);
+        passoDetto = -1; passoVibrato = -1;
+        scegliLuoghiVia();
+        aggiornaProgresso();
+        mostra();
+        seguiMappa(false);
+      })
+      .catch(() => { /* resta la guida di prima, o la freccia verso la meta */ })
+      .finally(() => { clearTimeout(timer); guidaInCorso = false; if (navigando) aggiornaGuida(); });
+  }
+
+  // ---------- Banner delle indicazioni ----------
+  const FRECCE = {
+    dritto: '<path d="M24 41V9M13 19 24 8l11 11"/>',
+    svolta: '<path d="M17 41V26c0-4.4 3.6-8 8-8h13M30 10l8 8-8 8"/>',
+    leggera: '<path d="M18 41V28.5c0-2 .8-3.900 2.200-5.300L34 9.500M24 9h11v11"/>',
+    stretta: '<path d="M16 41V12M16 14.500 33 31.500M35 20v13H22"/>',
+    inversione: '<path d="M31 41V20a8 8 0 0 0-16 0v14M8 27l7 7.500 7-7.500"/>',
+    rotonda: '<circle cx="24" cy="19" r="7.500"/><path d="M24 41V26.500M30.500 15.500 37 9M29 9h8v8"/>'
+  };
+  const GOCCIA = '<path d="M24 6S12 20.500 12 28.500a12 12 0 0 0 24 0C36 20.500 24 6 24 6Z" fill="currentColor" stroke="none"/><path d="M19 29a5 5 0 0 0 5 5" stroke="#1f2927"/>';
+  function iconaPasso(p) {
+    if (!p) return FRECCE.dritto;
+    if (p.tipo === 'arrive') return GOCCIA;
+    if (/roundabout|rotary/.test(p.tipo)) return FRECCE.rotonda;
+    const m = p.mod;
+    const base = m === 'uturn' ? FRECCE.inversione
+      : /sharp/.test(m) ? FRECCE.stretta
+      : /slight/.test(m) ? FRECCE.leggera
+      : /left|right/.test(m) ? FRECCE.svolta : FRECCE.dritto;
+    // le svolte a sinistra sono le stesse frecce specchiate
+    return /left/.test(m) && m !== 'uturn' ? '<g transform="matrix(-1 0 0 1 48 0)">' + base + '</g>' : base;
+  }
+  function verbo(m) {
+    return ({
+      left: 'Gira a sinistra', right: 'Gira a destra',
+      'slight left': 'Tieni la sinistra', 'slight right': 'Tieni la destra',
+      'sharp left': 'Svolta stretta a sinistra', 'sharp right': 'Svolta stretta a destra',
+      uturn: 'Torna indietro', straight: 'Prosegui dritto'
+    })[m] || 'Prosegui';
+  }
+  function frasePasso(p) {
+    if (!p) return '';
+    const inVia = p.nome ? ' in ' + p.nome : '', suVia = p.nome ? ' su ' + p.nome : '';
+    if (p.tipo === 'arrive') return 'La fontanella è ' + (/right/.test(p.mod) ? 'sulla destra' : /left/.test(p.mod) ? 'sulla sinistra' : 'davanti a te');
+    if (/roundabout|rotary/.test(p.tipo)) return 'Alla rotonda prendi la ' + (p.uscita ? p.uscita + '\u00aa ' : '') + 'uscita' + inVia;
+    if (p.tipo === 'depart') return 'Parti' + suVia;
+    if ((p.tipo === 'continue' || p.tipo === 'new name') && (!p.mod || p.mod === 'straight')) return 'Prosegui' + suVia;
+    return verbo(p.mod) + (p.mod === 'straight' ? suVia : inVia);
+  }
+  const minuscola = (t) => t.charAt(0).toLowerCase() + t.slice(1);
+  function scriviBanner(icona, dist, frase, poi, ruota) {
+    const svg = $('guida-svg');
+    if (svg.dataset.icona !== icona) { svg.innerHTML = icona; svg.dataset.icona = icona; }
+    svg.style.transform = ruota ? 'rotate(' + ruota.toFixed(0) + 'deg)' : '';
+    if ($('guida-dist').textContent !== dist) $('guida-dist').textContent = dist;
+    if ($('guida-frase').textContent !== frase) $('guida-frase').textContent = frase;
+    $('guida-poi').hidden = !poi;
+    if (poi && $('guida-poi').textContent !== poi) $('guida-poi').textContent = poi;
+  }
+  function aggiornaGuida() {
+    if (!navigando || meta == null || !io) return;
+    orientaFreccia();
+    const p = punti[meta];
+    if (!guida) {
+      // senza indicazioni (servizio lento o assente): una freccia verso la fontanella
+      const dir = gradiVerso(io.lat, io.lon, p[0], p[1]);
+      const d = distanza(metri(io.lat, io.lon, p[0], p[1]));
+      scriviBanner(FRECCE.dritto, cifre(d.v) + ' ' + d.u,
+        guidaInCorso ? 'Cerco la strada migliore\u2026' : 'Vai verso ' + verso(io.lat, io.lon, p[0], p[1]), '',
+        dir - (map ? map.getBearing() : 0));
+      if (!guidaInCorso && Date.now() - ultimaRichiestaGuida > 15000) chiediGuida();
+      annunciaLuoghi();
+      return;
+    }
+    if (prog.off > FUORI_PERCORSO) {
+      scriviBanner(FRECCE.inversione, '', 'Sei fuori strada: ricalcolo il percorso\u2026', '');
+      if (Date.now() - ultimaRichiestaGuida > 10000) chiediGuida();
+      annunciaLuoghi();
+      return;
+    }
+    // prossima manovra: la prima più avanti di dove sei (la partenza non conta)
+    let k = guida.passi.findIndex((ps, n) => n > 0 && ps.at > prog.cum + 3);
+    if (k < 0) k = guida.passi.length - 1;
+    const ps = guida.passi[k], dm = Math.max(0, (ps ? ps.at : guida.tot) - prog.cum);
+    const dd = distanza(dm);
+    const frase = frasePasso(ps);
+    const dopo = guida.passi[k + 1];
+    const poi = dopo && dopo.at - ps.at < 60 ? 'Poi ' + minuscola(frasePasso(dopo)) : '';
+    scriviBanner(iconaPasso(ps), dm < 10 ? 'Ora' : cifre(dd.v) + ' ' + dd.u, frase, poi);
+    // voce e vibrazione prima della svolta
+    if (ps && ps.tipo !== 'arrive') {
+      if (dm <= 45 && dm > 14 && passoDetto !== k) { passoDetto = k; parla('Tra ' + Math.round(dm / 5) * 5 + ' metri, ' + minuscola(frase)); }
+      if (dm <= 14 && passoVibrato !== k) { passoVibrato = k; passoDetto = k; vibra([40, 60, 40]); parla(frase); }
+    }
+    annunciaLuoghi();
+  }
+
+  // ---------- Luoghi notevoli lungo la strada ----------
+  let luoghiTutti = null, luoghiInCarico = false;
+  let luoghiVia = [];        // [{l, fatto}] vicini al percorso
+  const segniLuoghi = [];
+  let luogoAperto = null, luogoDa = 0, attesaLuogo = null;
+  const riassunti = new Map();
+  const ICONE_LUOGO = {
+    c: '<path d="M12 3v6M9.500 5.500h5M6 21v-8l6-4 6 4v8zM10.500 21v-4h3v4"/>',
+    m: '<path d="M4 9.500 12 5l8 4.500M5 21h14M7 11v7M12 11v7M17 11v7M4.500 9.500h15"/>',
+    p: '<path d="M12 21v-5M7.500 16h9L12 4z"/>',
+    f: '<path d="M12 4s-5 6-5 9.500a5 5 0 0 0 10 0C17 10 12 4 12 4z"/>',
+    q: '<rect x="5" y="5" width="14" height="14" rx="2"/><circle cx="12" cy="12" r="2.500"/>',
+    v: '<path d="M2.500 12S6 6 12 6s9.500 6 9.500 6-3.500 6-9.500 6-9.500-6-9.500-6z"/><circle cx="12" cy="12" r="2.500"/>',
+    n: '<path d="M10 21V8l2-4 2 4v13M8 21h8"/>'
+  };
+  function iconaLuogo(g) {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + (ICONE_LUOGO[g] || ICONE_LUOGO.n) + '</svg>';
+  }
+  async function caricaLuoghi() {
+    if (luoghiTutti || luoghiInCarico) return;
+    luoghiInCarico = true;
+    try {
+      const r = await fetch(LUOGHI);
+      if (r.ok) {
+        const j = await r.json();
+        if (j && Array.isArray(j.luoghi)) luoghiTutti = j.luoghi;
+      }
+    } catch (e) { /* senza luoghi la navigazione funziona lo stesso */ }
+    luoghiInCarico = false;
+    if (navigando) scegliLuoghiVia();
+  }
+  // Si tengono i luoghi a meno di 80 m dal percorso (dal bordo, per quelli grandi), al massimo 25.
+  function scegliLuoghiVia() {
+    togliSegniLuoghi();
+    luoghiVia = [];
+    if (!luoghiTutti || !guida) return;
+    const g = guida.geom;
+    let s = Infinity, n = -Infinity, o = Infinity, e = -Infinity;
+    g.forEach((c) => { s = Math.min(s, c[1]); n = Math.max(n, c[1]); o = Math.min(o, c[0]); e = Math.max(e, c[0]); });
+    const m = 0.003;
+    const vicini = [];
+    luoghiTutti.forEach((l) => {
+      if (l[0] < s - m || l[0] > n + m || l[1] < o - m || l[1] > e + m) return;
+      let min = Infinity;
+      const q = piano(l[0], l[1]);
+      for (let k = 0; k < g.length - 1; k++) {
+        const a = piano(g[k][1], g[k][0]), b = piano(g[k + 1][1], g[k + 1][0]);
+        const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
+        const t = l2 ? Math.max(0, Math.min(1, ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / l2)) : 0;
+        min = Math.min(min, Math.hypot(q[0] - a[0] - t * dx, q[1] - a[1] - t * dy));
+      }
+      if (min - l[4] < 80) vicini.push({ l, d: min - l[4], fatto: false });
+    });
+    vicini.sort((a, b) => a.d - b.d);
+    luoghiVia = vicini.slice(0, 25);
+    luoghiVia.forEach((v) => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'segno-luogo';
+      el.innerHTML = '<span class="segno-luogo-icona">' + iconaLuogo(v.l[5]) + '</span><span class="segno-luogo-nome"></span>';
+      el.querySelector('.segno-luogo-nome').textContent = v.l[2];
+      el.setAttribute('aria-label', v.l[2]);
+      el.addEventListener('click', (ev) => { ev.stopPropagation(); mostraLuogo(v.l, null); });
+      // il contenitore lo muove la mappa, il pulsante dentro si anima
+      const ancora = document.createElement('div');
+      ancora.className = 'segno-luogo-ancora';
+      ancora.appendChild(el);
+      segniLuoghi.push(new maplibregl.Marker({ element: ancora, anchor: 'bottom' }).setLngLat([v.l[1], v.l[0]]).addTo(map));
+    });
+  }
+  function togliSegniLuoghi() {
+    segniLuoghi.forEach((m) => m.remove());
+    segniLuoghi.length = 0;
+  }
+  function annunciaLuoghi() {
+    // un luogo nuovo può prendere il posto di quello mostrato, ma solo dopo qualche secondo
+    if (!luoghiVia.length || !io || (luogoAperto && Date.now() - luogoDa < 6000)) return;
+    const dir = direzioneMarcia();
+    let scelto = null;
+    luoghiVia.forEach((v) => {
+      if (v.fatto) return;
+      const d = metri(io.lat, io.lon, v.l[0], v.l[1]) - v.l[4];
+      if (d > VICINO_LUOGO) return;
+      const rel = dir == null ? 0 : ((gradiVerso(io.lat, io.lon, v.l[0], v.l[1]) - dir) % 360 + 540) % 360 - 180;
+      // già alle spalle: non si annuncia più
+      if (Math.abs(rel) > 140 && d > 5) { v.fatto = true; return; }
+      if (!scelto || d < scelto.d) scelto = { v, d, rel };
+    });
+    if (!scelto) return;
+    scelto.v.fatto = true;
+    const lato = scelto.d <= 5 ? 'Ci sei in mezzo'
+      : Math.abs(scelto.rel) < 35 ? 'Davanti a te'
+      : scelto.rel > 0 ? 'Alla tua destra' : 'Alla tua sinistra';
+    mostraLuogo(scelto.v.l, lato);
+    parla(lato + ', ' + scelto.v.l[2]);
+  }
+  async function riassunto(wiki) {
+    if (riassunti.has(wiki)) return riassunti.get(wiki);
+    const i = wiki.indexOf(':'), lingua = wiki.slice(0, i), titolo = wiki.slice(i + 1).replace(/ /g, '_');
+    const pagina = 'https://' + lingua + '.m.wikipedia.org/wiki/' + encodeURIComponent(titolo);
+    let esito = { pagina };
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 6000);
+      const r = await fetch('https://' + lingua + '.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(titolo), { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (r.ok) {
+        const j = await r.json();
+        let testo = (j.extract || '').replace(/\s*\([^)]*\)/g, '');
+        const fine = testo.search(/[.!?](\s|$)/);
+        if (fine > 20) testo = testo.slice(0, fine + 1);
+        if (testo.length > 170) testo = testo.slice(0, 167).replace(/\s\S*$/, '') + '\u2026';
+        esito = { pagina: (j.content_urls && j.content_urls.mobile && j.content_urls.mobile.page) || pagina, testo, foto: j.thumbnail && j.thumbnail.source };
+      }
+    } catch (e) { /* senza descrizione: resta il nome */ }
+    riassunti.set(wiki, esito);
+    return esito;
+  }
+  async function mostraLuogo(l, lato) {
+    luogoAperto = l;
+    luogoDa = Date.now();
+    clearTimeout(attesaLuogo);
+    $('luogo-lato').textContent = lato || 'Lungo la strada';
+    $('luogo-nome').textContent = l[2];
+    $('luogo-descr').textContent = '';
+    $('luogo-img').innerHTML = iconaLuogo(l[5]);
+    $('luogo-img').classList.remove('foto');
+    $('luogo-link').href = 'https://' + l[3].slice(0, l[3].indexOf(':')) + '.m.wikipedia.org/wiki/' + encodeURIComponent(l[3].slice(l[3].indexOf(':') + 1).replace(/ /g, '_'));
+    $('luogo').hidden = false;
+    applicaMargini();
+    attesaLuogo = setTimeout(chiudiLuogo, 12000);
+    if (!navigator.onLine) return;
+    const r = await riassunto(l[3]);
+    if (luogoAperto !== l) return;
+    if (r.testo) $('luogo-descr').textContent = r.testo;
+    $('luogo-link').href = r.pagina;
+    if (r.foto) {
+      const img = new Image();
+      img.alt = '';
+      img.onload = () => { if (luogoAperto !== l) return; $('luogo-img').textContent = ''; $('luogo-img').appendChild(img); $('luogo-img').classList.add('foto'); };
+      img.src = r.foto;
+    }
+  }
+  function chiudiLuogo() {
+    clearTimeout(attesaLuogo);
+    luogoAperto = null;
+    $('luogo').hidden = true;
+  }
+  $('luogo-chiudi').addEventListener('click', chiudiLuogo);
+
+  // ---------- Camera della navigazione ----------
+  function marginiGuida() {
+    const h = map ? map.getContainer().clientHeight : window.innerHeight;
+    // tu stai nel terzo basso dello schermo, la strada davanti occupa il resto
+    return { top: Math.round(h * 0.42), bottom: Math.round(visibile()) + 16, left: 0, right: 0 };
+  }
+  // In navigazione la linea diventa piena e azzurra, ben visibile anche in prospettiva.
+  function stileVia(guidata) {
+    if (!mappaPronta) return;
+    try {
+      map.setPaintProperty('via', 'line-color', guidata ? '#1c8fd0' : '#1f2927');
+      map.setPaintProperty('via', 'line-width', guidata ? ['interpolate', ['linear'], ['zoom'], 14, 5, 18, 11] : 4.5);
+      map.setPaintProperty('via', 'line-dasharray', guidata ? [1, 0] : [0.01, 2]);
+      map.setPaintProperty('via-bordo', 'line-width', guidata ? ['interpolate', ['linear'], ['zoom'], 14, 8, 18, 17] : 8);
+      map.setPaintProperty('via-bordo', 'line-opacity', guidata ? 1 : 0.85);
+    } catch (e) { /* stile non ancora pronto */ }
+  }
+  function orientaFreccia() {
+    const f = document.getElementById('freccia-io'), dir = direzioneMarcia();
+    if (f && dir != null) f.style.transform = 'rotate(' + dir.toFixed(1) + 'deg)';
+  }
   function seguiMappa(primo) {
+    orientaFreccia();
     if (!map || !io || !navigando || !seguendo) return;
     inquadrata = false;
-    const b = new maplibregl.LngLatBounds([io.lon, io.lat], [io.lon, io.lat]);
-    (lineaVia() || []).forEach((c) => b.extend(c));
-    map.setPadding(margini());
-    map.fitBounds(b, {
-      padding: { top: 90, bottom: 60, left: 60, right: 76 },
-      maxZoom: ZOOM_CAMMINO,
-      duration: primo ? 1000 : 800,
-      essential: true
-    });
+    const dir = direzioneMarcia(), att = map.getBearing();
+    let bearing = att;
+    if (dir != null) {
+      const diff = ((dir - att) % 360 + 540) % 360 - 180;
+      // piccoli scarti non fanno ruotare la mappa: niente mal di mare
+      if (primo || Math.abs(diff) > 12) bearing = att + diff;
+    }
+    // zoom sempre da camminata: anche se un movimento precedente è stato interrotto a metà
+    const opz = { center: [io.lon, io.lat], zoom: ZOOM_CAMMINO, bearing, pitch: INCLINAZIONE, padding: marginiGuida(), essential: true };
+    if (primo) map.flyTo(Object.assign(opz, { duration: 2200, curve: 1.3 }));
+    else map.easeTo(Object.assign(opz, { duration: 1000, easing: (t) => t }));
   }
   function smettiDiSeguire() {
     if (!seguendo) return;
@@ -871,24 +1255,53 @@
     navigando = true;
     seguendo = true;
     arrivoFatto = false;
+    guida = null; prog = null; luoghiVia = []; passoDetto = -1; passoVibrato = -1;
     nascondiArrivo();
+    chiudiLuogo();
+    document.body.classList.add('naviga');
+    stileVia(true);
+    $('guida').hidden = false;
+    $('btn-voce').setAttribute('aria-pressed', String(voce));
+    if (map) map.setMaxPitch(60);
     imposta('mini', true);
     tieniSchermoAcceso();
+    vibra(30);
     mostra();
     seguiMappa(true);
+    chiediGuida();
+    caricaLuoghi();
+    parla('Si parte. ' + (stradaDi(i) ? 'Destinazione ' + stradaDi(i) + '.' : ''));
   }
   function finisciNavigazione() {
     if (!navigando) return;
     navigando = false;
     seguendo = false;
     meta = null;
+    guida = null; prog = null; luoghiVia = [];
+    togliSegniLuoghi();
+    chiudiLuogo();
     clearTimeout(attesaArrivo);
     nascondiArrivo();
     lasciaSchermo();
+    try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e) { /* niente */ }
+    document.body.classList.remove('naviga');
+    stileVia(false);
+    $('guida').hidden = true;
     imposta('media');
+    if (map) {
+      map.easeTo({ pitch: 0, bearing: 0, padding: margini(), duration: 900 });
+      map.once('moveend', () => { if (!navigando) { map.setMaxPitch(0); inquadra(); } });
+    }
     applicaMargini();
     if (punti.length) mostra();
   }
+  $('btn-voce').addEventListener('click', () => {
+    voce = !voce;
+    try { localStorage.setItem(CHIAVE_VOCE, voce ? '1' : '0'); } catch (e) { /* niente */ }
+    $('btn-voce').setAttribute('aria-pressed', String(voce));
+    if (voce) parla(navigando && guida ? $('guida-frase').textContent : 'Indicazioni a voce attive');
+    else try { speechSynthesis.cancel(); } catch (e) { /* niente */ }
+  });
 
   function nascondiArrivo() { $('arrivo').hidden = true; }
   function arrivo(tipo) {
@@ -897,7 +1310,8 @@
     $('arrivo-titolo').textContent = 'Sei arrivato';
     $('arrivo-testo').textContent = 'Buona bevuta!';
     $('arrivo').hidden = false;
-    if (navigator.vibrate) { try { navigator.vibrate([80, 60, 80]); } catch (e) { /* niente */ } }
+    vibra([80, 60, 80]);
+    parla('Sei arrivato. Buona bevuta!');
     clearTimeout(attesaArrivo);
     attesaArrivo = setTimeout(finisciNavigazione, 6000);
   }
@@ -1144,8 +1558,13 @@
         '<stop offset="1" stop-color="#c2932d" stop-opacity="0"/></linearGradient></defs>' +
         '<path id="cono-spicchio" fill="url(#cono-sfuma)"/>' +
         '<path id="cono-lati" fill="none" stroke="url(#cono-bordo)" stroke-width="1.4" stroke-linejoin="round"/>' +
-        '</svg></div><div class="punto"></div>';
-      segnoIo = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([io.lon, io.lat]).addTo(map);
+        '</svg></div><div class="punto"></div>' +
+        // in navigazione il punto diventa una freccia che indica dove stai andando
+        '<div class="freccia-io" id="freccia-io"><svg viewBox="0 0 40 40" aria-hidden="true">' +
+        '<path d="M20 3 34 35 20 27 6 35Z" fill="#d9a93f" stroke="#fff" stroke-width="3.5" stroke-linejoin="round"/></svg></div>';
+      // steso sulla mappa: ruota e si inclina con lei, come in un navigatore
+      segnoIo = new maplibregl.Marker({ element: el, anchor: 'center', rotationAlignment: 'map', pitchAlignment: 'map' })
+        .setLngLat([io.lon, io.lat]).addTo(map);
       disegnaCono();
     } else segnoIo.setLngLat([io.lon, io.lat]);
   }
@@ -1188,8 +1607,8 @@
     document.getElementById('cono-spicchio').setAttribute('d',
       'M0 0L' + (-x) + ' ' + y + 'A' + r + ' ' + r + ' 0 0 1 ' + x + ' ' + y + 'Z');
     document.getElementById('cono-lati').setAttribute('d', 'M' + (-x) + ' ' + y + 'L0 0L' + x + ' ' + y);
-    const giro = rotta - (map ? map.getBearing() : 0);
-    cono.style.transform = 'rotate(' + giro.toFixed(1) + 'deg)';
+    // il segno è steso sulla mappa e ruota già con lei: il cono si orienta rispetto al nord
+    cono.style.transform = 'rotate(' + rotta.toFixed(1) + 'deg)';
     cono.classList.add('vista');
     aggiornaFreccia();
   }
