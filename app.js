@@ -29,6 +29,7 @@
   const SOGLIA_ARRIVO = 15;      // metri: sotto, sei arrivato
   const ZOOM_CAMMINO = 18;       // zoom della mappa mentre cammini con "Vai"
   const INCLINAZIONE = 50;       // gradi: in navigazione la mappa si inclina per vedere la strada davanti
+  const PAUSA_SEGUI = 8000;      // ms senza tocchi sulla mappa prima che riprenda a seguirti
   const FUORI_PERCORSO = 35;     // metri: oltre, il percorso si ricalcola
   const VICINO_LUOGO = 50;       // metri dal bordo di un luogo notevole per annunciarlo
   const LUOGHI = 'luoghi.json';  // monumenti, chiese, piazze... preparati dalla GitHub Action
@@ -365,7 +366,7 @@
   }
 
   function margini() {
-    if (navigando && seguendo) return marginiGuida();
+    if (navigando) return marginiGuida();
     const alto = $('filtri').getBoundingClientRect().bottom;
     if (largo.matches) return { top: 20, bottom: 20, left: 420, right: 20 };
     // mentre ti segue, la mappa ti tiene un po' più in basso per mostrarti la strada davanti
@@ -386,7 +387,7 @@
     if (p.top !== m.top || p.bottom !== m.bottom || p.left !== m.left || p.right !== m.right) {
       // Se la mappa sta inquadrando te e la fontanella, si rifà l'inquadratura con i margini nuovi:
       // spostare solo i margini farebbe scivolare la fontanella sotto i filtri o sotto la scheda.
-      if (navigando && seguendo) seguiMappa(false);
+      if (navigando) seguiMappa(false);
       else if (inquadrata) { map.setPadding(m); inquadra(); }
       else map.easeTo({ padding: m, duration: 300 });
     }
@@ -433,12 +434,14 @@
       scegli(migliore.properties.i);
     });
 
-    map.on('rotate', disegnaCono);
+    // fuori navigazione il cono ruota insieme alla mappa; in navigazione ci pensa il ciclo della camera
+    map.on('rotate', () => { if (!navigando) disegnaCono(); });
     // un gesto dell'utente sulla mappa interrompe l'inquadratura automatica
+    // (un tocco breve non fa partire né dragstart né zoomstart: non interrompe nulla)
     ['dragstart', 'zoomstart'].forEach((ev) => map.on(ev, (e) => {
       if (!e.originalEvent) return;
       inquadrata = false;
-      if (navigando) smettiDiSeguire();
+      if (navigando) pausaSegui();
     }));
 
     let freno = 0;
@@ -446,7 +449,8 @@
       const ora = Date.now();
       if (ora - freno > 180) { freno = ora; aggiornaSegni(); }
     });
-    map.on('moveend', () => {
+    map.on('moveend', (e) => {
+      if (e && e.camera) return;   // fotogrammi della camera di navigazione: nulla da ricalcolare
       if (marginiInSospeso) { marginiInSospeso = false; applicaMargini(); }
       aggiornaSegni();
       if (!punti.length || riferimento().mio) return;
@@ -1214,36 +1218,172 @@
       map.setPaintProperty('via-bordo', 'line-opacity', guidata ? 1 : 0.85);
     } catch (e) { /* stile non ancora pronto */ }
   }
+  // La camera non salta a ogni lettura del GPS: un ciclo a ogni fotogramma avvicina in modo morbido
+  // centro, direzione, zoom, inclinazione e margini ai valori voluti, e tiene il segno dell'utente
+  // fermo nel terzo basso dello schermo.
+  let cam = null;              // stato della camera: { bear, pitch, zoom, top, bottom, scLon, scLat, giro }
+  let visto = null;            // posizione mostrata, inseguita con dolcezza: { lon, lat }
+  let dirFiltrata = null;      // direzione di marcia dopo il filtro passa-basso (gradi)
+  let giroCamera = 0;
+  let ultimoFotogramma = 0;
+  let marginiCam = null;
+  let contaFotogrammi = 0;
+  let frecciaEl = null;
+  let ripresa = 0;
+  // dita sulla mappa (id -> istante del tocco). Con un dito appoggiato la camera sta ferma:
+  // jumpTo interrompe i gesti in corso, e senza questa pausa non si riuscirebbe a trascinare la mappa.
+  const toccando = new Map();
+  const ditoSuMappa = () => {
+    const ora = Date.now();
+    toccando.forEach((t, id) => { if (ora - t > 20000) toccando.delete(id); });   // tocco perso: non blocca per sempre
+    return toccando.size > 0;
+  };
+
+  // segnaposto: lo sostituisce il motore della navigazione
+  function posizioneGuidata() { return io; }
+
+  const corto = (a, b) => ((a - b) % 360 + 540) % 360 - 180;   // differenza a - b, dalla parte corta
+  const dolce = (dt, tau) => 1 - Math.exp(-dt / tau);
+
+  // La freccia sta sullo schermo: gira di (direzione - rotazione della mappa), calcolato a ogni fotogramma.
   function orientaFreccia() {
-    const f = document.getElementById('freccia-io'), dir = direzioneMarcia();
-    if (f && dir != null) f.style.transform = 'rotate(' + dir.toFixed(1) + 'deg)';
+    if (!frecciaEl || !frecciaEl.isConnected) frecciaEl = document.getElementById('freccia-io');
+    if (!frecciaEl || dirFiltrata == null || !map) return;
+    const bear = cam && seguendo ? cam.bear : map.getBearing();
+    frecciaEl.style.transform = 'rotate(' + corto(dirFiltrata, bear).toFixed(1) + 'deg)';
   }
-  function seguiMappa(primo) {
-    orientaFreccia();
-    if (!map || !io || !navigando || !seguendo) return;
-    inquadrata = false;
-    const dir = direzioneMarcia(), att = map.getBearing();
-    let bearing = att;
-    if (dir != null) {
-      const diff = ((dir - att) % 360 + 540) % 360 - 180;
-      // piccoli scarti non fanno ruotare la mappa: niente mal di mare
-      if (primo || Math.abs(diff) > 12) bearing = att + diff;
+
+  function passoCamera(t) {
+    giroCamera = 0;
+    if (!navigando || !map || !io) return;
+    giroCamera = requestAnimationFrame(passoCamera);
+    const dt = ultimoFotogramma ? Math.min(0.1, Math.max(0.001, (t - ultimoFotogramma) / 1000)) : 0.016;
+    ultimoFotogramma = t;
+    contaFotogrammi++;
+
+    // posizione mostrata: insegue quella voluta; se è lontana (schermo spento a lungo) ci va subito
+    const p = posizioneGuidata() || io;
+    if (!visto || metri(visto.lat, visto.lon, p.lat, p.lon) > 120) visto = { lon: p.lon, lat: p.lat };
+    else {
+      const k = dolce(dt, 0.7);
+      visto.lon += (p.lon - visto.lon) * k;
+      visto.lat += (p.lat - visto.lat) * k;
     }
-    // zoom sempre da camminata: anche se un movimento precedente è stato interrotto a metà
-    const opz = { center: [io.lon, io.lat], zoom: ZOOM_CAMMINO, bearing, pitch: INCLINAZIONE, padding: marginiGuida(), essential: true };
-    if (primo) map.flyTo(Object.assign(opz, { duration: 2200, curve: 1.3 }));
-    else map.easeTo(Object.assign(opz, { duration: 1000, easing: (t) => t }));
+
+    // direzione di marcia: filtro passa-basso, sempre dalla parte corta
+    const dir = direzioneMarcia();
+    if (dir != null) {
+      if (dirFiltrata == null) dirFiltrata = dir;
+      else dirFiltrata += corto(dir, dirFiltrata) * dolce(dt, 0.35);
+    }
+
+    if (segnoIo) segnoIo.setLngLat([visto.lon, visto.lat]);
+
+    if (seguendo && cam && !ditoSuMappa()) {
+      if (contaFotogrammi % 20 === 0) marginiCam = marginiGuida();
+      // la mappa gira solo se la direzione si discosta più di 8 gradi, e finché non è allineata (zona morta)
+      if (dirFiltrata != null) {
+        const d = corto(dirFiltrata, cam.bear);
+        if (cam.giro ? Math.abs(d) < 1.5 : Math.abs(d) > 8) cam.giro = !cam.giro;
+        if (cam.giro) cam.bear += d * dolce(dt, 0.6);
+      }
+      cam.zoom += (ZOOM_CAMMINO - cam.zoom) * dolce(dt, 0.6);
+      cam.pitch += (INCLINAZIONE - cam.pitch) * dolce(dt, 0.6);
+      cam.top += (marginiCam.top - cam.top) * dolce(dt, 0.4);
+      cam.bottom += (marginiCam.bottom - cam.bottom) * dolce(dt, 0.4);
+      // allo spunto (o alla ripresa) la mappa parte da dove si trova e si avvicina a te
+      const ks = dolce(dt, 0.5);
+      cam.scLon -= cam.scLon * ks;
+      cam.scLat -= cam.scLat * ks;
+      if (Math.abs(cam.scLon) < 1e-8 && Math.abs(cam.scLat) < 1e-8) cam.scLon = cam.scLat = 0;
+      map.jumpTo({
+        center: [visto.lon + cam.scLon, visto.lat + cam.scLat],
+        zoom: cam.zoom, bearing: cam.bear, pitch: cam.pitch,
+        padding: { top: cam.top, bottom: cam.bottom, left: 0, right: 0 }
+      }, { camera: true });
+    }
+    orientaFreccia();
   }
+  function avviaCamera() {
+    if (!giroCamera && navigando) { ultimoFotogramma = 0; giroCamera = requestAnimationFrame(passoCamera); }
+  }
+  function fermaCamera() {
+    if (giroCamera) cancelAnimationFrame(giroCamera);
+    giroCamera = 0;
+    cam = null; visto = null; dirFiltrata = null; marginiCam = null; frecciaEl = null;
+  }
+
+  // Parte (o riparte) dalla vista attuale della mappa; a ogni lettura del GPS basta richiamarla con false.
+  function seguiMappa(primo) {
+    if (!map || !io || !navigando) return;
+    marginiCam = marginiGuida();
+    if (seguendo) {
+      inquadrata = false;
+      if (primo || !cam) {
+        const p = posizioneGuidata() || io, c = map.getCenter(), pd = map.getPadding();
+        if (!visto) visto = { lon: p.lon, lat: p.lat };
+        cam = {
+          bear: map.getBearing(), pitch: map.getPitch(), zoom: map.getZoom(),
+          top: pd.top, bottom: pd.bottom,
+          scLon: c.lng - visto.lon, scLat: c.lat - visto.lat, giro: false
+        };
+      }
+    }
+    avviaCamera();
+  }
+
+  // Un gesto sulla mappa mette in pausa il seguire; dopo PAUSA_SEGUI senza tocchi riprende da solo.
   function smettiDiSeguire() {
     if (!seguendo) return;
     seguendo = false;
+    cam = null;
     aggiornaPulsantiVai(riferimento().mio);
-    applicaMargini();
+  }
+  function pausaSegui() {
+    if (!navigando) return;
+    smettiDiSeguire();
+    armaRipresa();
+  }
+  function armaRipresa() {
+    clearTimeout(ripresa);
+    ripresa = setTimeout(tentaRipresa, PAUSA_SEGUI);
+  }
+  function tentaRipresa() {
+    ripresa = 0;
+    if (!navigando || seguendo) return;
+    // dito ancora sulla mappa, o movimento d'inerzia in corso: si aspetta
+    if (ditoSuMappa() || (map && map.isMoving())) { armaRipresa(); return; }
+    ritornaASeguire();
   }
   function ritornaASeguire() {
+    clearTimeout(ripresa);
+    ripresa = 0;
     seguendo = true;
     aggiornaPulsantiVai(riferimento().mio);
     seguiMappa(true);
+  }
+  function toccoInizio(e) { toccando.set(e.pointerId, Date.now()); if (!seguendo) armaRipresa(); }
+  function toccoFine(e) { toccando.delete(e.pointerId); if (!seguendo) armaRipresa(); }
+  function rotellaMappa() { if (!seguendo) armaRipresa(); }
+  function agganciaGesti() {
+    const c = map && map.getCanvasContainer();
+    if (!c) return;
+    c.addEventListener('pointerdown', toccoInizio, true);
+    c.addEventListener('wheel', rotellaMappa, { passive: true });
+    window.addEventListener('pointerup', toccoFine, true);
+    window.addEventListener('pointercancel', toccoFine, true);
+  }
+  function sganciaGesti() {
+    const c = map && map.getCanvasContainer();
+    if (c) {
+      c.removeEventListener('pointerdown', toccoInizio, true);
+      c.removeEventListener('wheel', rotellaMappa, { passive: true });
+    }
+    window.removeEventListener('pointerup', toccoFine, true);
+    window.removeEventListener('pointercancel', toccoFine, true);
+    toccando.clear();
+    clearTimeout(ripresa);
+    ripresa = 0;
   }
 
   function iniziaNavigazione() {
@@ -1267,6 +1407,7 @@
     tieniSchermoAcceso();
     vibra(30);
     mostra();
+    agganciaGesti();
     seguiMappa(true);
     chiediGuida();
     caricaLuoghi();
@@ -1285,6 +1426,9 @@
     lasciaSchermo();
     try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e) { /* niente */ }
     document.body.classList.remove('naviga');
+    sganciaGesti();
+    fermaCamera();
+    if (segnoIo && io) segnoIo.setLngLat([io.lon, io.lat]);
     stileVia(false);
     $('guida').hidden = true;
     imposta('media');
@@ -1560,13 +1704,16 @@
         '<path id="cono-lati" fill="none" stroke="url(#cono-bordo)" stroke-width="1.4" stroke-linejoin="round"/>' +
         '</svg></div><div class="punto"></div>' +
         // in navigazione il punto diventa una freccia che indica dove stai andando
-        '<div class="freccia-io" id="freccia-io"><svg viewBox="0 0 40 40" aria-hidden="true">' +
-        '<path d="M20 3 34 35 20 27 6 35Z" fill="#d9a93f" stroke="#fff" stroke-width="3.5" stroke-linejoin="round"/></svg></div>';
-      // steso sulla mappa: ruota e si inclina con lei, come in un navigatore
-      segnoIo = new maplibregl.Marker({ element: el, anchor: 'center', rotationAlignment: 'map', pitchAlignment: 'map' })
-        .setLngLat([io.lon, io.lat]).addTo(map);
+        '<div class="freccia-io" id="freccia-io"><svg viewBox="0 0 64 64" aria-hidden="true">' +
+        '<circle cx="32" cy="32" r="30" fill="#1c8fd0" fill-opacity=".16"/>' +
+        '<path d="M32 9 47 51 32 42 17 51Z" transform="translate(0 2.5)" fill="#1f2927" fill-opacity=".14" stroke="#1f2927" stroke-opacity=".14" stroke-width="9" stroke-linejoin="round"/>' +
+        '<path d="M32 9 47 51 32 42 17 51Z" transform="translate(0 1.5)" fill="#1f2927" fill-opacity=".22" stroke="#1f2927" stroke-opacity=".22" stroke-width="6.5" stroke-linejoin="round"/>' +
+        '<path d="M32 9 47 51 32 42 17 51Z" fill="#d9a93f" stroke="#fff" stroke-width="4.5" stroke-linejoin="round"/>' +
+        '<path d="M32 17.5 40.5 41.5 32 36.5Z" fill="#fff" fill-opacity=".38"/></svg></div>';
+      // il segno sta sullo schermo (non steso sulla mappa): in navigazione la freccia la ruota il ciclo della camera
+      segnoIo = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([io.lon, io.lat]).addTo(map);
       disegnaCono();
-    } else segnoIo.setLngLat([io.lon, io.lat]);
+    } else if (!navigando) segnoIo.setLngLat([io.lon, io.lat]);
   }
 
   // ---------- Direzione (bussola) ----------
@@ -1607,8 +1754,9 @@
     document.getElementById('cono-spicchio').setAttribute('d',
       'M0 0L' + (-x) + ' ' + y + 'A' + r + ' ' + r + ' 0 0 1 ' + x + ' ' + y + 'Z');
     document.getElementById('cono-lati').setAttribute('d', 'M' + (-x) + ' ' + y + 'L0 0L' + x + ' ' + y);
-    // il segno è steso sulla mappa e ruota già con lei: il cono si orienta rispetto al nord
-    cono.style.transform = 'rotate(' + rotta.toFixed(1) + 'deg)';
+    // il segno sta sullo schermo: il cono si orienta rispetto al nord della mappa
+    const giro = rotta - (map ? map.getBearing() : 0);
+    cono.style.transform = 'rotate(' + giro.toFixed(1) + 'deg)';
     cono.classList.add('vista');
     aggiornaFreccia();
   }
@@ -1652,14 +1800,15 @@
     if (Date.now() - ultimaBussola > 3000 && c.heading != null && !isNaN(c.heading) && c.speed > 0.7) nuovaRotta(c.heading, 25);
     $('btn-centra').classList.add('attivo');
     disegnaIo();
+    // in navigazione la camera si aggiorna a ogni lettura, anche se ti sei mosso poco
+    if (navigando && map) seguiMappa(false);
     if (!punti.length || !map || !mosso) return;
     ioLontano = false;
     calcola();
     ioLontano = !!vicine[0] && vicine[0].d > LONTANO_DA_ROMA;
     if (ioLontano) calcola();
     mostra();
-    if (navigando) seguiMappa(false);
-    else if (primaVista && !ioLontano) { primaVista = false; inquadra(); }
+    if (!navigando && primaVista && !ioLontano) { primaVista = false; inquadra(); }
   }
   function posizioneNegata(err) {
     if (err && err.code === 1) gpsNegato = true;
@@ -1676,8 +1825,8 @@
   }
 
   // ---------- Comandi ----------
-  $('btn-piu').addEventListener('click', () => { inquadrata = false; if (navigando) smettiDiSeguire(); if (map) map.zoomIn({ duration: 350 }); });
-  $('btn-meno').addEventListener('click', () => { inquadrata = false; if (navigando) smettiDiSeguire(); if (map) map.zoomOut({ duration: 350 }); });
+  $('btn-piu').addEventListener('click', () => { inquadrata = false; if (navigando) pausaSegui(); if (map) map.zoomIn({ duration: 350 }); });
+  $('btn-meno').addEventListener('click', () => { inquadrata = false; if (navigando) pausaSegui(); if (map) map.zoomOut({ duration: 350 }); });
   $('btn-centra').addEventListener('click', () => {
     if (!map) return;
     chiediBussola();
