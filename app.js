@@ -727,7 +727,8 @@
     $('scheda').classList.remove('nascosta');
     $('mirino').hidden = r.mio;
 
-    const arrivato = r.mio && d < SOGLIA_ARRIVO;
+    // arrivato: lungo il percorso oppure, se il percorso è in ritardo, in linea d'aria
+    const arrivato = r.mio && (d < SOGLIA_ARRIVO || metri(r.lat, r.lon, p[0], p[1]) < SOGLIA_ARRIVO);
     $('contesto').textContent = arrivato ? 'Ci sei, è qui accanto'
       : navigando ? 'Stai andando qui'
       : fissata != null ? 'Hai scelto'
