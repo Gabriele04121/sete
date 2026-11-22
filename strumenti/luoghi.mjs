@@ -14,20 +14,22 @@ const SERVER = [
 ];
 const FILE = process.env.SETE_USCITA ? new URL(process.env.SETE_USCITA, 'file://' + process.cwd() + '/') : new URL('../luoghi.json', import.meta.url);
 
-const filtri = [
-  '["historic"]["historic"!~"^(memorial|wayside_cross|wayside_shrine|boundary_stone|milestone|stone)$"]',
-  '["tourism"~"^(attraction|museum|viewpoint|gallery|artwork)$"]',
-  '["amenity"~"^(place_of_worship|fountain|theatre)$"]',
-  '["leisure"~"^(park|garden)$"]',
-  '["place"="square"]',
-  '["building"~"^(church|cathedral|basilica|palace|castle)$"]',
-  '["man_made"~"^(obelisk|bridge)$"]',
-  '["bridge"]["highway"]',
-  '["landuse"="religious"]'
-];
-const domanda = '[out:json][timeout:180];(' +
-  filtri.map((f) => 'nwr' + f + '["name"]["wikipedia"](' + RIQUADRO + ');').join('') +
-  ');out center bb tags qt;';
+// Una sola ricerca semplice e veloce: tutto ciò che ha nome e pagina Wikipedia nel riquadro.
+// Le categorie che contano si scelgono dopo, qui nello script (vedi notevole()).
+const domanda = '[out:json][timeout:300];nwr["wikipedia"]["name"](' + RIQUADRO + ');out center bb tags qt;';
+
+// Monumenti, chiese, musei, parchi, piazze, fontane, ponti... ma non strade, fermate, scuole o negozi.
+function notevole(t) {
+  if (t.historic && !/^(memorial|wayside_cross|wayside_shrine|boundary_stone|milestone|stone|district)$/.test(t.historic)) return true;
+  if (/^(attraction|museum|viewpoint|gallery|artwork)$/.test(t.tourism || '')) return true;
+  if (/^(place_of_worship|fountain|theatre)$/.test(t.amenity || '')) return true;
+  if (/^(park|garden)$/.test(t.leisure || '')) return true;
+  if (t.place === 'square') return true;
+  if (/^(church|cathedral|basilica|chapel|palace|castle)$/.test(t.building || '')) return true;
+  if (/^(obelisk|bridge|lighthouse)$/.test(t.man_made || '')) return true;
+  if (t.bridge && t.bridge !== 'no' && t.highway) return true;
+  return false;
+}
 
 // Genere, per scegliere l'icona nell'app: c chiesa, m museo, p parco, f fontana, q piazza, n monumento, v panorama.
 function genere(t) {
@@ -55,7 +57,7 @@ export function leggiLuoghi(json) {
     const t = el.tags || {};
     const lat = el.lat ?? el.center?.lat;
     const lon = el.lon ?? el.center?.lon;
-    if (lat == null || lon == null || !t.name || !t.wikipedia) continue;
+    if (lat == null || lon == null || !t.name || !t.wikipedia || !notevole(t)) continue;
     if (!/^[a-z-]{2,12}:.+/.test(t.wikipedia)) continue;
     let raggio = 0;
     if (el.bounds) {
@@ -87,7 +89,7 @@ async function principale() {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'sete-fontanelle/1.0' },
           body: 'data=' + encodeURIComponent(domanda),
-          signal: AbortSignal.timeout(240000)
+          signal: AbortSignal.timeout(330000)
         });
         if (!r.ok) throw new Error(server + ': HTTP ' + r.status);
         json = await r.json();
