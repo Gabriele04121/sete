@@ -1,6 +1,6 @@
 // Sete: funzionamento offline.
 // Cambia il numero di versione quando modifichi i file, così il telefono scarica quelli nuovi.
-const VERSIONE = 'sete-v13';
+const VERSIONE = 'sete-v14';
 const MAPPA = 'sete-mappa';
 const MAX_TASSELLI = 1500;
 
