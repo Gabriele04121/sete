@@ -5,7 +5,7 @@ const MAPPA = 'sete-mappa';
 const MAX_TASSELLI = 1500;
 
 const FILE = [
-  './', 'index.html', 'app.css', 'app.js', 'manifest.webmanifest',
+  './', 'index.html', 'app.css', 'guida.js', 'app.js', 'manifest.webmanifest',
   'vendor/maplibre/maplibre-gl.js', 'vendor/maplibre/maplibre-gl.css',
   'fonts/big-shoulders.woff2', 'fonts/hanken-grotesk.woff2',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/favicon-32.png'

@@ -29,7 +29,6 @@
   const SOGLIA_ARRIVO = 15;      // metri: sotto, sei arrivato
   const ZOOM_CAMMINO = 18;       // zoom della mappa mentre cammini con "Vai"
   const INCLINAZIONE = 50;       // gradi: in navigazione la mappa si inclina per vedere la strada davanti
-  const FUORI_PERCORSO = 35;     // metri: oltre, il percorso si ricalcola
   const VICINO_LUOGO = 50;       // metri dal bordo di un luogo notevole per annunciarlo
   const LUOGHI = 'luoghi.json';  // monumenti, chiese, piazze... preparati dalla GitHub Action
   const CHIAVE_VOCE = 'sete.voce';
@@ -558,7 +557,7 @@
   function lineaVia() {
     const i = mostrata(), r = riferimento();
     if (i == null || !r.mio) return null;
-    if (navigando && guida && prog) return lineaRestante();
+    if (navigando && guida && prog) { const q = posizioneGuidata(); return [[q.lon, q.lat]].concat(SeteGuida.restante(guida, prog)); }
     const fine = [punti[i][1], punti[i][0]], rt = percorsoValido(i, r);
     return rt ? [[r.lon, r.lat]].concat(rt.geom, [fine]) : [[r.lon, r.lat], fine];
   }
@@ -856,7 +855,11 @@
   // e la strada davanti. In alto un banner dice la prossima svolta; lungo la strada si indicano i luoghi notevoli.
   let guida = null;          // {geom, cum, tot, passi: [{tipo, mod, nome, uscita, at}], t}
   let guidaInCorso = false, ultimaRichiestaGuida = 0;
-  let prog = null;           // posizione sul percorso: {cum, off, seg}
+  let prog = null;           // posizione sul percorso: {cum, off, seg, lat, lon}
+  let statoVia = SeteGuida.STATO_INIZIALE;   // {fuori, da, conteggio}: fuori strada, con isteresi
+  let letturaGuida = null;   // l'ultima lettura GPS già contata nello stato della strada
+  let guidaFallita = false;  // l'ultima richiesta del percorso non è andata a buon fine
+  let agganciata = false;    // la posizione mostrata è quella agganciata al percorso
   let passoDetto = -1, passoVibrato = -1;
   let voce = false;
   try { voce = localStorage.getItem(CHIAVE_VOCE) === '1'; } catch (e) { /* niente */ }
@@ -883,55 +886,34 @@
   function piano(lat, lon) {
     return [lon * RAD * Math.cos(41.9 * RAD) * 6371000, lat * RAD * 6371000];
   }
-  function preparaGuida(via) {
-    const geom = via.geometry.coordinates, cum = [0];
-    for (let k = 1; k < geom.length; k++) cum.push(cum[k - 1] + metri(geom[k - 1][1], geom[k - 1][0], geom[k][1], geom[k][0]));
-    const tot = cum[cum.length - 1];
-    const passi = [], scala = via.distance > 0 ? tot / via.distance : 1;
-    let somma = 0;
-    ((via.legs && via.legs[0] && via.legs[0].steps) || []).forEach((st) => {
-      const m = st.maneuver || {};
-      passi.push({ tipo: m.type || '', mod: m.modifier || '', nome: st.name || '', uscita: m.exit, at: somma * scala });
-      somma += st.distance || 0;
-    });
-    return { geom, cum, tot, passi, t: Date.now() };
-  }
-  // Dove sei sul percorso: il punto più vicino della linea, quanti metri ne hai percorsi e quanto ne sei lontano.
-  function progressoSu(lat, lon) {
-    const g = guida.geom, q = piano(lat, lon);
-    let migliore = { cum: 0, off: Infinity, seg: 0 };
-    for (let k = 0; k < g.length - 1; k++) {
-      const a = piano(g[k][1], g[k][0]), b = piano(g[k + 1][1], g[k + 1][0]);
-      const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
-      const t = l2 ? Math.max(0, Math.min(1, ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / l2)) : 0;
-      const off = Math.hypot(q[0] - a[0] - t * dx, q[1] - a[1] - t * dy);
-      if (off < migliore.off) migliore = { cum: guida.cum[k] + t * (guida.cum[k + 1] - guida.cum[k]), off, seg: k };
-    }
-    return migliore;
-  }
-  function puntoA(cum) {
-    const g = guida.geom, c = guida.cum;
-    if (cum <= 0) return g[0];
-    for (let k = 0; k < g.length - 1; k++) {
-      if (c[k + 1] >= cum) {
-        const t = c[k + 1] > c[k] ? (cum - c[k]) / (c[k + 1] - c[k]) : 0;
-        return [g[k][0] + t * (g[k + 1][0] - g[k][0]), g[k][1] + t * (g[k + 1][1] - g[k][1])];
-      }
-    }
-    return g[g.length - 1];
-  }
-  function lineaRestante() {
-    const fine = [punti[meta][1], punti[meta][0]];
-    return [[io.lon, io.lat], puntoA(prog.cum)].concat(guida.geom.slice(prog.seg + 1), [fine]);
-  }
+  // Dove sei sul percorso. Lo stato "fuori strada" si aggiorna una volta per ogni lettura GPS,
+  // non a ogni ridisegno della scheda.
   function aggiornaProgresso() {
-    prog = guida && io ? progressoSu(io.lat, io.lon) : null;
+    if (!guida || !io) { prog = null; return; }
+    if (io === letturaGuida && prog) return;
+    letturaGuida = io;
+    prog = SeteGuida.progresso(guida, io.lat, io.lon, prog, Date.now());
+    if (!prog) return;
+    const eraFuori = statoVia.fuori;
+    statoVia = SeteGuida.statoStrada(statoVia, prog.off, io.acc, Date.now());
+    if (statoVia.fuori && !eraFuori) guidaFallita = false;   // appena fuori strada: ricalcolo subito
+  }
+  // La posizione da mostrare: agganciata al percorso se sei in strada, altrimenti quella del GPS.
+  function posizioneGuidata() {
+    if (!io) return null;
+    if (navigando && guida && prog) {
+      const p = SeteGuida.posizioneAgganciata(prog, io, statoVia, agganciata);
+      agganciata = p.agganciata;
+      return { lat: p.lat, lon: p.lon };
+    }
+    agganciata = false;
+    return { lat: io.lat, lon: io.lon };
   }
   // Direzione in cui stai camminando: quella del percorso davanti a te, altrimenti la bussola o la meta.
   function direzioneMarcia() {
-    if (guida && prog && prog.off < FUORI_PERCORSO) {
-      const a = puntoA(prog.cum), b = puntoA(Math.min(guida.tot, prog.cum + 25));
-      if (a[0] !== b[0] || a[1] !== b[1]) return gradiVerso(a[1], a[0], b[1], b[0]);
+    if (guida && prog && !statoVia.fuori) {
+      const d = SeteGuida.direzione(guida, prog);
+      if (d != null) return d;
     }
     if (rotta != null) return rotta;
     if (meta != null && io) return gradiVerso(io.lat, io.lon, punti[meta][0], punti[meta][1]);
@@ -939,24 +921,28 @@
   }
 
   function chiediGuida() {
-    if (!navigando || guidaInCorso || !io || meta == null || !navigator.onLine) return;
-    guidaInCorso = true;
+    if (!navigando || guidaInCorso || !io || meta == null) return;
     ultimaRichiestaGuida = Date.now();
+    if (!navigator.onLine) { guidaFallita = true; return; }
+    guidaInCorso = true;
     const p = punti[meta], mio = meta, ctrl = new AbortController();
+    const origine = { lat: io.lat, lon: io.lon };
     const timer = setTimeout(() => ctrl.abort(), 10000);
     fetch(SERVER_PERCORSI + io.lon + ',' + io.lat + ';' + p[1] + ',' + p[0] + '?overview=full&geometries=geojson&steps=true', { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
       .then((j) => {
         const via = j && j.code === 'Ok' && j.routes && j.routes[0];
         if (!via || !navigando || meta !== mio) return;
-        guida = preparaGuida(via);
+        guida = SeteGuida.prepara(via, origine, { lat: p[0], lon: p[1] });
+        guidaFallita = false;
+        statoVia = SeteGuida.STATO_INIZIALE; prog = null; letturaGuida = null;
         passoDetto = -1; passoVibrato = -1;
         scegliLuoghiVia();
         aggiornaProgresso();
         mostra();
         seguiMappa(false);
       })
-      .catch(() => { /* resta la guida di prima, o la freccia verso la meta */ })
+      .catch(() => { guidaFallita = true; /* resta la guida di prima, o la freccia verso la meta */ })
       .finally(() => { clearTimeout(timer); guidaInCorso = false; if (navigando) aggiornaGuida(); });
   }
 
@@ -982,23 +968,6 @@
     // le svolte a sinistra sono le stesse frecce specchiate
     return /left/.test(m) && m !== 'uturn' ? '<g transform="matrix(-1 0 0 1 48 0)">' + base + '</g>' : base;
   }
-  function verbo(m) {
-    return ({
-      left: 'Gira a sinistra', right: 'Gira a destra',
-      'slight left': 'Tieni la sinistra', 'slight right': 'Tieni la destra',
-      'sharp left': 'Svolta stretta a sinistra', 'sharp right': 'Svolta stretta a destra',
-      uturn: 'Torna indietro', straight: 'Prosegui dritto'
-    })[m] || 'Prosegui';
-  }
-  function frasePasso(p) {
-    if (!p) return '';
-    const inVia = p.nome ? ' in ' + p.nome : '', suVia = p.nome ? ' su ' + p.nome : '';
-    if (p.tipo === 'arrive') return 'La fontanella è ' + (/right/.test(p.mod) ? 'sulla destra' : /left/.test(p.mod) ? 'sulla sinistra' : 'davanti a te');
-    if (/roundabout|rotary/.test(p.tipo)) return 'Alla rotonda prendi la ' + (p.uscita ? p.uscita + '\u00aa ' : '') + 'uscita' + inVia;
-    if (p.tipo === 'depart') return 'Parti' + suVia;
-    if ((p.tipo === 'continue' || p.tipo === 'new name') && (!p.mod || p.mod === 'straight')) return 'Prosegui' + suVia;
-    return verbo(p.mod) + (p.mod === 'straight' ? suVia : inVia);
-  }
   const minuscola = (t) => t.charAt(0).toLowerCase() + t.slice(1);
   function scriviBanner(icona, dist, frase, poi, ruota) {
     const svg = $('guida-svg');
@@ -1013,31 +982,31 @@
     if (!navigando || meta == null || !io) return;
     orientaFreccia();
     const p = punti[meta];
-    if (!guida) {
+    const ora = Date.now();
+    if (!guida || (statoVia.fuori && guidaFallita && !guidaInCorso)) {
       // senza indicazioni (servizio lento o assente): una freccia verso la fontanella
       const dir = gradiVerso(io.lat, io.lon, p[0], p[1]);
       const d = distanza(metri(io.lat, io.lon, p[0], p[1]));
       scriviBanner(FRECCE.dritto, cifre(d.v) + ' ' + d.u,
         guidaInCorso ? 'Cerco la strada migliore\u2026' : 'Vai verso ' + verso(io.lat, io.lon, p[0], p[1]), '',
         dir - (map ? map.getBearing() : 0));
-      if (!guidaInCorso && Date.now() - ultimaRichiestaGuida > 15000) chiediGuida();
+      if (!guidaInCorso && ora - ultimaRichiestaGuida > 12000) chiediGuida();
       annunciaLuoghi();
       return;
     }
-    if (prog.off > FUORI_PERCORSO) {
+    if (statoVia.fuori) {
+      // appena si è fuori strada il ricalcolo parte subito, poi al massimo uno ogni 12 secondi
       scriviBanner(FRECCE.inversione, '', 'Sei fuori strada: ricalcolo il percorso\u2026', '');
-      if (Date.now() - ultimaRichiestaGuida > 10000) chiediGuida();
+      if (!guidaInCorso && (!guidaFallita || ora - ultimaRichiestaGuida > 12000)) chiediGuida();
       annunciaLuoghi();
       return;
     }
     // prossima manovra: la prima più avanti di dove sei (la partenza non conta)
-    let k = guida.passi.findIndex((ps, n) => n > 0 && ps.at > prog.cum + 3);
-    if (k < 0) k = guida.passi.length - 1;
-    const ps = guida.passi[k], dm = Math.max(0, (ps ? ps.at : guida.tot) - prog.cum);
+    const pp = SeteGuida.prossimoPasso(guida, prog);
+    const k = pp.indice, ps = pp.passo, dm = pp.distanza;
     const dd = distanza(dm);
-    const frase = frasePasso(ps);
-    const dopo = guida.passi[k + 1];
-    const poi = dopo && dopo.at - ps.at < 60 ? 'Poi ' + minuscola(frasePasso(dopo)) : '';
+    const frase = SeteGuida.frase(ps);
+    const poi = pp.poi ? 'Poi ' + minuscola(SeteGuida.frase(pp.poi)) : '';
     scriviBanner(iconaPasso(ps), dm < 10 ? 'Ora' : cifre(dd.v) + ' ' + dd.u, frase, poi);
     // voce e vibrazione prima della svolta
     if (ps && ps.tipo !== 'arrive') {
@@ -1256,6 +1225,7 @@
     seguendo = true;
     arrivoFatto = false;
     guida = null; prog = null; luoghiVia = []; passoDetto = -1; passoVibrato = -1;
+    statoVia = SeteGuida.STATO_INIZIALE; letturaGuida = null; guidaFallita = false; agganciata = false;
     nascondiArrivo();
     chiudiLuogo();
     document.body.classList.add('naviga');
@@ -1278,6 +1248,7 @@
     seguendo = false;
     meta = null;
     guida = null; prog = null; luoghiVia = [];
+    statoVia = SeteGuida.STATO_INIZIALE; letturaGuida = null; guidaFallita = false; agganciata = false;
     togliSegniLuoghi();
     chiudiLuogo();
     clearTimeout(attesaArrivo);
